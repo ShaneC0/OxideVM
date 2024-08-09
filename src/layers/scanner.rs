@@ -32,12 +32,12 @@ pub enum TokenType {
 
 pub struct Token<'a> {
     pub kind: TokenType,
-    pub lexeme: Option<&'a str>,
+    pub lexeme: &'a str,
     pub line: u32,
 }
 
 impl<'a> Token<'a> {
-    pub fn new(kind: TokenType, lexeme: Option<&'a str>, line: u32) -> Self {
+    pub fn new(kind: TokenType, lexeme: &'a str, line: u32) -> Self {
         Token { kind, lexeme, line }
     }
 }
@@ -73,14 +73,10 @@ impl<'a> Scanner<'a> {
         &self.source[self.start..self.current]
     }
 
-    fn make_token(&mut self, kind: TokenType, has_lexeme: bool) -> Token<'a> {
+    fn make_token(&mut self, kind: TokenType) -> Token<'a> {
         let t = Token::new(
             kind,
-            if has_lexeme {
-                Some(self.lexeme())
-            } else {
-                None
-            },
+            self.lexeme(),
             self.line,
         );
         self.start = self.current;
@@ -96,7 +92,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn error_token(&mut self) -> Token<'a> {
-        Token::new(TokenType::Error, Some(self.lexeme()), self.line)
+        Token::new(TokenType::Error, self.lexeme(), self.line)
     }
 
     fn number(&mut self) -> Token<'a> {
@@ -104,16 +100,17 @@ impl<'a> Scanner<'a> {
         while let Some(c) = self.peek() {
             if c == '.' {
                 if dot_seen {
-                    return self.error_token();
+                    break; 
                 }
                 dot_seen = true;
+                self.advance();
             } else if c.is_numeric() {
                 self.advance();
             } else {
                 break;
             }
         }
-        self.make_token(TokenType::NumericLiteral, true)
+        self.make_token(TokenType::NumericLiteral)
     }
     
     fn skip_whitespace(&mut self) {
@@ -135,38 +132,38 @@ impl<'a> Scanner<'a> {
         if let Some(c) = self.peek() {
             self.advance();
             match c {
-                '(' => self.make_token(TokenType::LParen, false),
-                ')' => self.make_token(TokenType::RParen, false),
-                '+' => self.make_token(TokenType::Plus, false),
-                '-' => self.make_token(TokenType::Minus, false),
-                '*' => self.make_token(TokenType::Star, false),
-                '/' => self.make_token(TokenType::Slash, false),
+                '(' => self.make_token(TokenType::LParen),
+                ')' => self.make_token(TokenType::RParen),
+                '+' => self.make_token(TokenType::Plus),
+                '-' => self.make_token(TokenType::Minus),
+                '*' => self.make_token(TokenType::Star),
+                '/' => self.make_token(TokenType::Slash),
                 '!' => {
                     if self.check('=') {
-                        self.make_token(TokenType::BangEqual, false)
+                        self.make_token(TokenType::BangEqual)
                     } else {
-                        self.make_token(TokenType::Bang, false)
+                        self.make_token(TokenType::Bang)
                     }
                 }
                 '=' => {
                     if self.check('=') {
-                        self.make_token(TokenType::EqualEqual, false)
+                        self.make_token(TokenType::EqualEqual)
                     } else {
-                        self.make_token(TokenType::Equal, false)
+                        self.make_token(TokenType::Equal)
                     }
                 }
                 '>' => {
                     if self.check('=') {
-                        self.make_token(TokenType::GreaterEqual, false)
+                        self.make_token(TokenType::GreaterEqual)
                     } else {
-                        self.make_token(TokenType::Greater, false)
+                        self.make_token(TokenType::Greater)
                     }
                 }
                 '<' => {
                     if self.check('=') {
-                        self.make_token(TokenType::LessEqual, false)
+                        self.make_token(TokenType::LessEqual)
                     } else {
-                        self.make_token(TokenType::Less, false)
+                        self.make_token(TokenType::Less)
                     }
                 }
                 _ => {
@@ -178,7 +175,7 @@ impl<'a> Scanner<'a> {
                 }
             }
         } else {
-            Token::new(TokenType::EOF, None, self.line)
+            Token::new(TokenType::EOF, "", self.line)
         }
     }
 }

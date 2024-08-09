@@ -2,7 +2,8 @@ pub enum OpCode {
     Add,
     Subtract,
     Multiply,
-    Divide
+    Divide,
+    Constant
 }
 
 pub struct VM {
