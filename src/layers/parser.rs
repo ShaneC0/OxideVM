@@ -1,4 +1,5 @@
 use crate::layers::scanner::{Token, TokenType, Scanner};
+use std::collections::HashMap;
 use std::fmt;
 
 
@@ -81,6 +82,44 @@ impl fmt::Debug for Operator {
 }
 
 #[derive(Debug)]
+pub enum Stmt {
+    Print(Box<Expr>),
+    ExprStmt(Box<Expr>),
+    Block(Vec<Box<Stmt>>)
+}
+
+impl fmt::Display for Stmt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt_stmt(stmt: &Stmt, f: &mut fmt::Formatter<'_>, indent_level: usize) -> fmt::Result {
+            let indent = "  ".repeat(indent_level);
+            match stmt {
+                Stmt::Print(expr) => {
+                    writeln!(f, "{}Print(", indent)?;
+                    writeln!(f, "{}  expr:", indent)?;
+                    write!(f, "{}", expr)?;
+                    writeln!(f, "\n{})", indent)
+                }
+                Stmt::ExprStmt(expr) => {
+                    writeln!(f, "{}ExprStmt(", indent)?;
+                    write!(f, "{}", expr)?;
+                    writeln!(f, "\n{})", indent)
+                }
+                Stmt::Block(stmts) => {
+                    writeln!(f, "{}Block {{", indent)?;
+                    for stmt in stmts {
+                        fmt_stmt(stmt, f, indent_level + 2)?;
+                        writeln!(f)?;
+                    }
+                    write!(f, "{}}}", indent)
+                }
+            }
+        }
+
+        fmt_stmt(self, f, 0)
+    }
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Number(f64),
     Bool(bool),
@@ -127,12 +166,12 @@ impl fmt::Display for Expr {
 }
 
 pub struct Program {
-    pub code: Vec<Expr>
+    pub stmts: Vec<Box<Stmt>>
 }
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for expr in &self.code {
+        for expr in &self.stmts {
             writeln!(f, "{}", expr)?;
         }
         Ok(())
@@ -199,6 +238,13 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn check(&mut self, expected: TokenType) -> bool {
+        let t = self.next();
+        let matches = t.kind == expected;
+        self.push_back(t);
+        matches
+    }
+
     fn primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.next();
         match token.kind {
@@ -235,30 +281,40 @@ impl<'a> Parser<'a> {
 
     fn unary(&mut self) -> Result<Expr, ParseError> {
         let token = self.next();
-        if token.kind == TokenType::Minus {
-            let operand = self.unary()?;
-            return Ok(Expr::Unary(Operator::Negate, Box::new(operand)));
-        } else if token.kind == TokenType::Bang {
-            let operand = self.unary()?;
-            return Ok(Expr::Unary(Operator::Not, Box::new(operand)));
-        } else {
-            self.push_back(token);
-            self.primary()
+        match token.kind {
+            TokenType::Minus => {
+                let operand = self.unary()?;
+                Ok(Expr::Unary(Operator::Negate, Box::new(operand)))
+            },
+            TokenType::Bang => {
+                let operand = self.unary()?;
+                Ok(Expr::Unary(Operator::Not, Box::new(operand)))
+            },
+            _ => {
+                self.push_back(token);
+                self.primary()
+            }
         }
     }
 
     fn expr(&mut self, min_precedence: usize) -> Result<Expr, ParseError> {
         let mut lhs = self.unary()?;
-        let precedences = vec![
-            vec![TokenType::And, TokenType::Or], 
-            vec![TokenType::EqualEqual, TokenType::BangEqual], 
-            vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], 
-            vec![TokenType::Plus, TokenType::Minus], 
-            vec![TokenType::Star, TokenType::Slash], 
-        ];
+        let mut precedence_map: HashMap<TokenType, usize> = std::collections::HashMap::new();
+        precedence_map.insert(TokenType::And, 1);
+        precedence_map.insert(TokenType::Or, 1);
+        precedence_map.insert(TokenType::EqualEqual, 2);
+        precedence_map.insert(TokenType::BangEqual, 2);
+        precedence_map.insert(TokenType::Greater, 3);
+        precedence_map.insert(TokenType::GreaterEqual, 3);
+        precedence_map.insert(TokenType::Less, 3);
+        precedence_map.insert(TokenType::LessEqual, 3);
+        precedence_map.insert(TokenType::Plus, 4);
+        precedence_map.insert(TokenType::Minus, 4);
+        precedence_map.insert(TokenType::Star, 5);
+        precedence_map.insert(TokenType::Slash, 5);
         loop {
             let next_token = self.next();
-            if let Some(op_precedence) = precedences.iter().position(|ops| ops.contains(&next_token.kind)) {
+            if let Some(&op_precedence) = precedence_map.get(&next_token.kind) {
                 if op_precedence < min_precedence {
                     self.push_back(next_token);
                     break;
@@ -293,17 +349,65 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(lhs)
+
+    }
+    fn print_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let expr = self.expr(0)?; 
+        let next_token = self.next();
+        if next_token.kind != TokenType::Semicolon {
+            let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
+            self.synchronize();
+            return Err(e);
+        }
+        Ok(Stmt::Print(Box::new(expr)))
     }
 
-    fn program(&mut self) -> Result<Expr, ParseError> {
-        self.expr(0)
+    fn stmt(&mut self) -> Result<Stmt, ParseError> {
+        let token = self.next();
+        match token.kind {
+            TokenType::Print => self.print_stmt(),
+            TokenType::LBrace => {
+                let mut stmts = Vec::new();
+                while !self.check(TokenType::RBrace) && !self.check(TokenType::EOF) {
+                    stmts.push(Box::new(self.stmt()?));
+                }
+                let next_token = self.next();
+                if next_token.kind != TokenType::RBrace {
+                    let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::RBrace));
+                    self.synchronize();
+                    Err(e)
+                } else {
+                    Ok(Stmt::Block(stmts))
+                }
+            }
+            _ => {
+                self.push_back(token);
+                let expr = self.expr(0)?;
+                let next_token = self.next();
+                if next_token.kind != TokenType::Semicolon {
+                    let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
+                    self.synchronize();
+                    Err(e)
+                } else {
+                    Ok(Stmt::ExprStmt(Box::new(expr)))
+                }
+            }
+        }
     }
 
-    pub fn parse(&mut self) -> Result<Expr, Vec<ParseError>> {
+    fn program(&mut self) -> Result<Program, ParseError> {
+        let mut stmts = Vec::new();
+        while !self.check(TokenType::EOF) {
+            stmts.push(Box::new(self.stmt()?));
+        }
+        Ok(Program{stmts})
+    }
+
+    pub fn parse(&mut self) -> Result<Program, Vec<ParseError>> {
         match self.program() {
-            Ok(expr) => {
+            Ok(p) => {
                 if self.errors.is_empty() {
-                    Ok(expr)
+                    Ok(p)
                 } else {
                     Err(self.errors.clone())
                 }

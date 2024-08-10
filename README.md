@@ -32,6 +32,20 @@
     unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
     primary_expr    ::= number_literal | bool_literal | "(" expression ")"
 
-# Tokens 
+# Statements!
+    program         ::= stmt* eof
+    stmt            ::= print_stmt | expr_stmt | block
+    print_stmt      ::= "print" expr ";"
+    expr_stmt       ::= expression ";"
+    block           ::= "{" stmt* "}"
+    expr            ::= logic_expr
+    logic_expr      ::= equal_expr ( ( "and" | "or" ) logic_expr )?
+    equal_expr      ::= relational_expr ( ( "==" | "!=" ) equal_expr )?
+    relational_expr ::= add_expr ( ( "<" | "<=" | ">" | ">") relational_expr )?
+    add_expr        ::= mult_expr ( ( "+" | "-" ) add_expr )?
+    mult_expr       ::= unary_expr( ( "*" | "/" ) mult_expr )?
+    unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
+    primary_expr    ::= number_literal | bool_literal | identifier | "(" expr ")"
 
-# Op Codes
+# Variables
+

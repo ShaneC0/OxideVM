@@ -1,4 +1,4 @@
-use crate::layers::parser::{Expr, Operator};
+use crate::layers::parser::{Program, Stmt, Expr, Operator};
 use crate::layers::vm::OpCode;
 use crate::layers::value::Value;
 
@@ -90,8 +90,25 @@ impl Compiler {
         } 
     }
 
-    pub fn compile(&mut self, ast: Expr) {
-        self.compile_expr(ast);
-        self.emit_byte(OpCode::Return as u8);
+    pub fn compile_stmt(&mut self, stmt: Stmt) {
+        match stmt {
+            Stmt::Print(expr) => {
+                self.compile_expr(*expr);
+                self.emit_byte(OpCode::Print as u8);
+            }
+            Stmt::ExprStmt(expr) => self.compile_expr(*expr),
+            Stmt::Block(stmts) => self.compile_prog(stmts)
+        }
+    }
+
+
+    pub fn compile_prog(&mut self, stmts: Vec<Box<Stmt>>) {
+        for stmt in stmts {
+            self.compile_stmt(*stmt);
+        }
+    }
+
+    pub fn compile(&mut self, ast: Program) {
+        self.compile_prog(ast.stmts);
     }
 }

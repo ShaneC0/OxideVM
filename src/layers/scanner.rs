@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub enum TokenType {
+    Print,
+
     Ident,
 
     Equal,
@@ -39,6 +41,7 @@ pub enum TokenType {
     EOF,
 }
 
+#[derive(Debug)]
 pub struct Token<'a> {
     pub kind: TokenType,
     pub lexeme: &'a str,
@@ -68,6 +71,7 @@ impl<'a> Scanner<'a> {
         keywords.insert("or", TokenType::Or);
         keywords.insert("true", TokenType::BoolLiteral);
         keywords.insert("false", TokenType::BoolLiteral);
+        keywords.insert("print", TokenType::Print);
         Scanner {
             source,
             start: 0,
@@ -97,7 +101,7 @@ impl<'a> Scanner<'a> {
             kind,
             self.lexeme(),
             self.line,
-            self.current - self.start
+            self.current - self.line_start
         );
         self.start = self.current;
         t
@@ -120,7 +124,7 @@ impl<'a> Scanner<'a> {
         while let Some(c) = self.peek() {
             if c == '.' {
                 if dot_seen {
-                    break; 
+                    return self.error_token(); 
                 }
                 dot_seen = true;
                 self.advance();
@@ -130,6 +134,9 @@ impl<'a> Scanner<'a> {
                 break;
             }
         }
+        if dot_seen && self.peek().map_or(false, |c| !c.is_numeric()) {
+        }
+
         self.make_token(TokenType::NumericLiteral)
     }
 

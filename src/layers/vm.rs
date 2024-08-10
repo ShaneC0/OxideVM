@@ -13,6 +13,7 @@ pub enum OpCode {
     Less,
     Equal,
     Swap,
+    Print,
     Return
 }
 
@@ -85,8 +86,8 @@ impl VM {
 
     pub fn run(&mut self) {
         while let Some(byte) = self.read_byte() {
-            println!("{:02x}", byte);
             self.print_stack();
+            println!("{:02x}", byte);
             match byte {
                 x if x == OpCode::Constant as u8 => {
                     if let Some(arg) = self.read_byte() {
@@ -115,11 +116,9 @@ impl VM {
                     self.push(b);
                     self.push(a);
                 }
-                x if x == OpCode::Return as u8 => {
-                    println!("Result:");
-                    println!("{}", self.pop())
-                }
-                 _ => panic!("Unknown instruction: {:02X}", byte)
+                x if x == OpCode::Print as u8 => println!("{}", self.pop()),
+                x if x == OpCode::Return as u8 => {self.pop();},
+                _ => panic!("Unknown instruction: {:02X}", byte)
             }
         }
     }

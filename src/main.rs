@@ -2,7 +2,7 @@ mod layers;
 
 use layers::scanner::{Scanner, TokenType};
 use layers::vm::VM;
-use layers::parser::{Parser, ParseError, Expr};
+use layers::parser::{Parser, ParseError, Program};
 use layers::compiler::Compiler;
 
 fn print_tokens(input: &str) {
@@ -16,10 +16,11 @@ fn print_tokens(input: &str) {
     }
 }
 
-fn run_prog(input: &str) -> Result<Expr, Vec<ParseError>> {
+fn run_prog(input: &str) -> Result<Program, Vec<ParseError>> {
     let mut p = Parser::new(&input);
     p.parse()
 }
+
 fn go(input: &str) {
     println!("Input String: {}", input);
     print_tokens(&input);
@@ -36,6 +37,6 @@ fn go(input: &str) {
 }
 
 fn main() {
-    let input = String::from("1 + ( 2 * 3 }");
+    let input = String::from("print false or (false or true);");
     go(&input);
 }
