@@ -1,11 +1,9 @@
 mod layers;
 
 use layers::scanner::{Scanner, TokenType};
-use layers::vm::{VM, OpCode};
-use layers::parser::{Parser, Program, ParseError, Expr};
-use layers::compiler::{Compiler};
-
-
+use layers::vm::VM;
+use layers::parser::{Parser, ParseError, Expr};
+use layers::compiler::Compiler;
 
 fn print_tokens(input: &str) {
     let mut scanner = Scanner::new(&input);
@@ -22,8 +20,9 @@ fn run_prog(input: &str) -> Result<Expr, Vec<ParseError>> {
     let mut p = Parser::new(&input);
     p.parse()
 }
-fn compiler_stuff(input: &str) {
+fn go(input: &str) {
     println!("Input String: {}", input);
+    print_tokens(&input);
     let ast = run_prog(&input).unwrap();
     let mut c = Compiler::new();
     c.compile(ast);
@@ -37,6 +36,6 @@ fn compiler_stuff(input: &str) {
 }
 
 fn main() {
-    let input = String::from("1 > 2");
-    compiler_stuff(&input);
+    let input = String::from("1 + ( 2 * 3 }");
+    go(&input);
 }

@@ -31,6 +31,10 @@ pub enum TokenType {
     NumericLiteral,
     BoolLiteral,
 
+    LBrace,
+    RBrace,
+
+    Semicolon,
     Error,
     EOF,
 }
@@ -38,12 +42,13 @@ pub enum TokenType {
 pub struct Token<'a> {
     pub kind: TokenType,
     pub lexeme: &'a str,
-    pub line: u32,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl<'a> Token<'a> {
-    pub fn new(kind: TokenType, lexeme: &'a str, line: u32) -> Self {
-        Token { kind, lexeme, line }
+    pub fn new(kind: TokenType, lexeme: &'a str, line: usize, column: usize) -> Self {
+        Token { kind, lexeme, line, column}
     }
 }
 
@@ -51,7 +56,8 @@ pub struct Scanner<'a> {
     source: &'a str,
     start: usize,
     current: usize,
-    line: u32,
+    line: usize,
+    line_start: usize,
     keywords: HashMap<&'static str, TokenType>
 }
 
@@ -67,6 +73,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             line: 1,
+            line_start: 0,
             keywords
         }
     }
@@ -90,6 +97,7 @@ impl<'a> Scanner<'a> {
             kind,
             self.lexeme(),
             self.line,
+            self.current - self.start
         );
         self.start = self.current;
         t
@@ -104,7 +112,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn error_token(&mut self) -> Token<'a> {
-        Token::new(TokenType::Error, self.lexeme(), self.line)
+        Token::new(TokenType::Error, self.lexeme(), self.line, self.current - self.start)
     }
 
     fn number(&mut self) -> Token<'a> {
@@ -148,6 +156,7 @@ impl<'a> Scanner<'a> {
                 ' ' | '\r' | '\t' => self.advance(), 
                 '\n' => {
                     self.line += 1;
+                    self.line_start = self.current;
                     self.advance();
                 }
                 _ => break,
@@ -163,9 +172,12 @@ impl<'a> Scanner<'a> {
             match c {
                 '(' => self.make_token(TokenType::LParen),
                 ')' => self.make_token(TokenType::RParen),
+                '{' => self.make_token(TokenType::LBrace),
+                '}' => self.make_token(TokenType::RBrace),
                 '+' => self.make_token(TokenType::Plus),
                 '-' => self.make_token(TokenType::Minus),
                 '*' => self.make_token(TokenType::Star),
+                ';' => self.make_token(TokenType::Semicolon),
                 '/' => self.make_token(TokenType::Slash),
                 '!' => {
                     if self.check('=') {
@@ -206,7 +218,7 @@ impl<'a> Scanner<'a> {
                 }
             }
         } else {
-            Token::new(TokenType::EOF, "", self.line)
+            Token::new(TokenType::EOF, "", self.line, 0)
         }
     }
 }

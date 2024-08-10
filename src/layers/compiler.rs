@@ -1,6 +1,6 @@
-use crate::layers::parser::{Expr, Program, Operator};
-use crate::layers::vm::{OpCode};
-use crate::layers::value::{Value};
+use crate::layers::parser::{Expr, Operator};
+use crate::layers::vm::OpCode;
+use crate::layers::value::Value;
 
 
 pub struct Compiler {
@@ -49,13 +49,32 @@ impl Compiler {
                     Operator::Multiply => self.emit_byte(OpCode::Multiply as u8),
                     Operator::Divide => self.emit_byte(OpCode::Divide as u8),
                     Operator::And => self.emit_byte(OpCode::And as u8),
-                    Operator::Or => self.emit_byte(OpCode::Or as u8),
-                    Operator::GThan => self.emit_byte(OpCode::Greater as u8),
-                    Operator::GEThan => self.emit_byte(OpCode::GreaterEqual as u8),
+                    Operator::Or => {
+                        self.emit_byte(OpCode::Not as u8);
+                        self.emit_byte(OpCode::Swap as u8);
+                        self.emit_byte(OpCode::Not as u8);
+                        self.emit_byte(OpCode::And as u8);
+                        self.emit_byte(OpCode::Not as u8);
+                    },
+                    Operator::GThan => {
+                        self.emit_byte(OpCode::Swap as u8);
+                        self.emit_byte(OpCode::Less as u8);
+                    }
+                    Operator::GEThan => {
+                        self.emit_byte(OpCode::Less as u8);
+                        self.emit_byte(OpCode::Not as u8);
+                    }
                     Operator::LThan => self.emit_byte(OpCode::Less as u8),
-                    Operator::LEThan => self.emit_byte(OpCode::LessEqual as u8),
+                    Operator::LEThan => {
+                        self.emit_byte(OpCode::Swap as u8);
+                        self.emit_byte(OpCode::Less as u8);
+                        self.emit_byte(OpCode::Not as u8);
+                    }
                     Operator::Equal => self.emit_byte(OpCode::Equal as u8),
-                    Operator::NotEqual => self.emit_byte(OpCode::NotEqual as u8),
+                    Operator::NotEqual => {
+                        self.emit_byte(OpCode::Equal as u8);
+                        self.emit_byte(OpCode::Not as u8);
+                    }
                     _ => unreachable!()
                 }
             },

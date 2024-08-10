@@ -1,10 +1,38 @@
-use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::ops::{Add, Sub, Mul, Div, Neg, Not, BitAnd};
+use std::cmp::Ordering;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone)]
 pub enum Value {
     Float(f64),
     Boolean(bool),
     Nil,
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Nil, Value::Nil) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
+        match (self, other) {
+            (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
+            _ => None, // Returning None for non-comparable types
+        }
+    }
+
+    fn lt(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Float(a), Value::Float(b)) => a < b,
+            _ => panic!("Type error: Less than operation is only supported for Float values"),
+        }
+    }
 }
 
 impl Add for Value {
@@ -63,6 +91,28 @@ impl Neg for Value {
         match self {
             Value::Float(a) => Value::Float(-a),
             _ => panic!("Type error: Negation is only supported for Float values"),
+        }
+    }
+}
+
+impl Not for Value {
+    type Output = Value;
+
+    fn not(self) -> Value {
+        match self {
+            Value::Boolean(a) => Value::Boolean(!a),
+            _ => panic!("Type error: Cannot apply NOT operator on non-boolean value"),
+        }
+    }
+}
+
+impl BitAnd for Value {
+    type Output = Value;
+
+    fn bitand(self, rhs: Value) -> Value {
+        match (self, rhs) {
+            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
+            _ => panic!("Cannot apply AND operator on non-boolean values!")
         }
     }
 }

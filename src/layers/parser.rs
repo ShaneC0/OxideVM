@@ -2,18 +2,43 @@ use crate::layers::scanner::{Token, TokenType, Scanner};
 use std::fmt;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ErrorType {
     InvalidLiteral,
     ExpectedToken(TokenType),
     UnexpectedToken,
 }
 
-
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ParseError {
     kind: ErrorType,
-    message: String
+    message: String,
+    line: usize,
+    column: usize,
+    lexeme: String,
+}
+
+impl ParseError {
+    pub fn new(kind: ErrorType, token: &Token, message: String) -> Self {
+        ParseError {
+            kind,
+            message,
+            line: token.line,
+            column: token.column,
+            lexeme: token.lexeme.to_string(),
+        }
+    }
+
+    pub fn display_with_context(&self, source: &str) -> String {
+        let lines: Vec<&str> = source.lines().collect();
+        let error_line = lines.get(self.line - 1).unwrap_or(&"");
+        let pointer_line = format!("{:>width$}^", "", width = self.column);
+
+        format!(
+            "Error at line {}, column {}:\n{}\n{}\n{}",
+            self.line, self.column, error_line, pointer_line, self.message
+        )
+    }
 }
 
 pub enum Operator {
@@ -118,24 +143,44 @@ impl fmt::Display for Program {
 pub struct Parser<'a> {
     pushed_token: Option<Token<'a>>,
     scanner: Scanner<'a>,
-    errors: Vec<ParseError>
+    errors: Vec<ParseError>,
+    source: &'a str
 }
 
 impl<'a> Parser<'a> {
-fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
-    let message = match &kind {
-        ErrorType::InvalidLiteral => format!("{} | Failed to parse literal '{}'.", token.line, token.lexeme),
-        ErrorType::ExpectedToken(expected) => format!("{} | Expected {:#?}", token.line, expected),
-        ErrorType::UnexpectedToken => format!("{} | Unexpected token '{}'", token.line, token.lexeme),
-    };
-    ParseError { kind, message }
-}
-
     pub fn new(input: &'a str) -> Self {
         Parser {
             pushed_token: None,
             scanner: Scanner::new(input),
-            errors: vec![]
+            errors: vec![],
+            source: input
+        }
+    }
+
+    fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
+        let message = match &kind {
+            ErrorType::InvalidLiteral => format!("Failed to parse literal '{}'.", token.lexeme),
+            ErrorType::ExpectedToken(expected) => format!("Expected {:?} but found '{}'", expected, token.lexeme),
+            ErrorType::UnexpectedToken => format!("Unexpected token '{}'", token.lexeme),
+        };
+        let error = ParseError::new(kind, &token, message);
+        eprintln!("{}", error.display_with_context(self.source));
+        self.errors.push(error.clone());
+        error
+    }
+
+    fn synchronize(&mut self) {
+        let mut token = self.next();
+        loop {
+            match token.kind {
+                TokenType::Semicolon | TokenType::RBrace => {
+                    self.push_back(token);
+                    break;
+                }
+                _ => {
+                    token = self.next();
+                }
+            }
         }
     }
 
@@ -158,22 +203,33 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
         let token = self.next();
         match token.kind {
             TokenType::NumericLiteral => {
-                let literal: f64 = token.lexeme.parse().map_err(|_| self.error(token, ErrorType::InvalidLiteral))?;
-                Ok(Expr::Number(literal))
+                match token.lexeme.parse::<f64>() {
+                    Ok(lit) => Ok(Expr::Number(lit)),
+                    Err(_) => Err(self.error(token, ErrorType::InvalidLiteral))
+                }
             },
-            TokenType::BoolLiteral =>  {
-                let literal: bool = token.lexeme.parse().map_err(|_| self.error(token, ErrorType::InvalidLiteral))?;
-                Ok(Expr::Bool(literal))
+            TokenType::BoolLiteral => {
+                match token.lexeme.parse::<bool>() {
+                    Ok(lit) => Ok(Expr::Bool(lit)),
+                    Err(_) => Err(self.error(token, ErrorType::InvalidLiteral))
+                }
             },
             TokenType::LParen => {
                 let expression = self.expr(0)?;
                 let token = self.next();
                 if token.kind != TokenType::RParen {
-                    return Err(self.error(token, ErrorType::ExpectedToken(TokenType::RParen)));
+                    let e = self.error(token, ErrorType::ExpectedToken(TokenType::RParen));
+                    self.synchronize();
+                    Err(e)
+                } else {
+                    Ok(Expr::Group(Box::new(expression)))
                 }
-                Ok(Expr::Group(Box::new(expression)))
             },
-            _ => Err(self.error(token, ErrorType::UnexpectedToken))
+            _ => {
+                let e = self.error(token, ErrorType::UnexpectedToken);
+                self.synchronize();
+                Err(e)
+            }
         }
     }
 
@@ -194,27 +250,20 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
     fn expr(&mut self, min_precedence: usize) -> Result<Expr, ParseError> {
         let mut lhs = self.unary()?;
         let precedences = vec![
-            vec![TokenType::And, TokenType::Or], // Higher precedence (multiplication/division)
-            vec![TokenType::EqualEqual, TokenType::BangEqual], // Higher precedence (multiplication/division)
-            vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], // Lower precedence (addition/subtraction)
-            vec![TokenType::Plus, TokenType::Minus], // Lower precedence (addition/subtraction)
-            vec![TokenType::Star, TokenType::Slash], // Higher precedence (multiplication/division)
+            vec![TokenType::And, TokenType::Or], 
+            vec![TokenType::EqualEqual, TokenType::BangEqual], 
+            vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], 
+            vec![TokenType::Plus, TokenType::Minus], 
+            vec![TokenType::Star, TokenType::Slash], 
         ];
-
         loop {
-            // Peek the next token to check its precedence
             let next_token = self.next();
             if let Some(op_precedence) = precedences.iter().position(|ops| ops.contains(&next_token.kind)) {
                 if op_precedence < min_precedence {
-                    // If the operator has higher precedence, push it back and break
                     self.push_back(next_token);
                     break;
                 }
-
-                // Otherwise, process this operator
                 let rhs = self.expr(op_precedence + 1)?;
-
-                // Update the lhs with the newly parsed binary expression
                 lhs = Expr::Binary(
                     Box::new(lhs),
                     match next_token.kind {
@@ -230,7 +279,11 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
                         TokenType::GreaterEqual => Operator::GEThan,
                         TokenType::Less => Operator::LThan,
                         TokenType::LessEqual => Operator::LEThan,
-                        _ => return Err(self.error(next_token, ErrorType::UnexpectedToken)),
+                        _ => {
+                            let e = self.error(next_token, ErrorType::UnexpectedToken);
+                            self.synchronize();
+                            return Err(e);
+                        }
                     },
                     Box::new(rhs),
                 );
@@ -239,18 +292,7 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
                 break;
             }
         }
-
         Ok(lhs)
-    }
-
-    fn check(&mut self, kind: TokenType) -> bool {
-        let t = self.next();
-        let mut matches = false;
-        if t.kind == kind {
-            matches = true;
-        } 
-        self.push_back(t);
-        matches
     }
 
     fn program(&mut self) -> Result<Expr, ParseError> {
@@ -258,16 +300,17 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
     }
 
     pub fn parse(&mut self) -> Result<Expr, Vec<ParseError>> {
-        let e = self.program();
-        match e {
-            Ok(exp) => {
-                println!("AST:");
-                println!("{}", exp);
-                Ok(exp)
-            },
-            Err(e) => {
-                eprintln!("Parsing error: {}", e.message);
-                Err(vec![e])
+        match self.program() {
+            Ok(expr) => {
+                if self.errors.is_empty() {
+                    Ok(expr)
+                } else {
+                    Err(self.errors.clone())
+                }
+            } 
+            Err(_) => {
+                self.synchronize();
+                Err(self.errors.clone())
             }
         }
     }

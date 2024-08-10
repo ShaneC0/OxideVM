@@ -1,4 +1,4 @@
-use crate::layers::value::{Value};
+use crate::layers::value::Value;
 
 #[derive(Debug)]
 pub enum OpCode {
@@ -64,7 +64,7 @@ impl VM {
     fn print_stack(&self) {
         print!("Stack: [");
         for i in 0..self.sp {
-            print!("{:#?}", self.stack[i]);
+            print!("{:?}", self.stack[i]);
             if i < self.sp - 1 {
                 print!(", ");
             }
@@ -106,12 +106,20 @@ impl VM {
                 }
                 x if x == OpCode::Negate as u8 => self.unary_op(|n| -n),
                 x if x == OpCode::Not as u8 => self.unary_op(|n| !n),
-                x if x == OpCode::And as u8 => self.binary_op(|a, b| a && b),
+                x if x == OpCode::And as u8 => self.binary_op(|a, b| a & b),
+                x if x == OpCode::Less as u8 => self.binary_op(|a, b| Value::Boolean(a < b)),
+                x if x == OpCode::Equal as u8 => self.binary_op(|a, b| Value::Boolean(a == b)),
+                x if x == OpCode::Swap as u8 => {
+                    let b = self.pop();
+                    let a = self.pop();
+                    self.push(b);
+                    self.push(a);
+                }
                 x if x == OpCode::Return as u8 => {
                     println!("Result:");
                     println!("{}", self.pop())
                 }
-                // _ => panic!("Unknown instruction: {:02X}", byte)
+                 _ => panic!("Unknown instruction: {:02X}", byte)
             }
         }
     }
