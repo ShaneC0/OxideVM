@@ -2,6 +2,7 @@ use crate::layers::scanner::{Token, TokenType, Scanner};
 use std::fmt;
 
 
+#[derive(Debug)]
 pub enum ErrorType {
     InvalidLiteral,
     ExpectedToken(TokenType),
@@ -9,6 +10,7 @@ pub enum ErrorType {
 }
 
 
+#[derive(Debug)]
 pub struct ParseError {
     kind: ErrorType,
     message: String
@@ -19,7 +21,16 @@ pub enum Operator {
     Subtract,
     Multiply,
     Divide,
-    Negate
+    Negate,
+    And,
+    Or,
+    GThan,
+    GEThan,
+    LThan,
+    LEThan,
+    Equal,
+    NotEqual,
+    Not
 }
 
 impl fmt::Debug for Operator {
@@ -30,6 +41,15 @@ impl fmt::Debug for Operator {
             Operator::Multiply => "*",
             Operator::Divide => "/",
             Operator::Negate => "-",
+            Operator::And => "and",
+            Operator::Or => "or",
+            Operator::GThan => ">",
+            Operator::GEThan => ">=",
+            Operator::LThan => "<",
+            Operator::LEThan => "<=",
+            Operator::Equal => "==",
+            Operator::NotEqual => "!=",
+            Operator::Not => "!"
         };
         write!(f, "{}", op_str)
     }
@@ -38,6 +58,7 @@ impl fmt::Debug for Operator {
 #[derive(Debug)]
 pub enum Expr {
     Number(f64),
+    Bool(bool),
     Binary(Box<Expr>, Operator, Box<Expr>),
     Unary(Operator, Box<Expr>),
     Group(Box<Expr>)
@@ -49,6 +70,7 @@ impl fmt::Display for Expr {
             let indent = "  ".repeat(indent_level);
             match expr {
                 Expr::Number(value) => write!(f, "{}Number({})", indent, value),
+                Expr::Bool(value) => write!(f, "{}Bool({})", indent, value),
                 Expr::Binary(left, op, right) => {
                     writeln!(f, "{}Binary(", indent)?;
                     writeln!(f, "{}  left:", indent)?;
@@ -80,7 +102,7 @@ impl fmt::Display for Expr {
 }
 
 pub struct Program {
-    code: Vec<Expr>
+    pub code: Vec<Expr>
 }
 
 impl fmt::Display for Program {
@@ -139,6 +161,10 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
                 let literal: f64 = token.lexeme.parse().map_err(|_| self.error(token, ErrorType::InvalidLiteral))?;
                 Ok(Expr::Number(literal))
             },
+            TokenType::BoolLiteral =>  {
+                let literal: bool = token.lexeme.parse().map_err(|_| self.error(token, ErrorType::InvalidLiteral))?;
+                Ok(Expr::Bool(literal))
+            },
             TokenType::LParen => {
                 let expression = self.expr(0)?;
                 let token = self.next();
@@ -156,6 +182,9 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
         if token.kind == TokenType::Minus {
             let operand = self.unary()?;
             return Ok(Expr::Unary(Operator::Negate, Box::new(operand)));
+        } else if token.kind == TokenType::Bang {
+            let operand = self.unary()?;
+            return Ok(Expr::Unary(Operator::Not, Box::new(operand)));
         } else {
             self.push_back(token);
             self.primary()
@@ -165,6 +194,9 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
     fn expr(&mut self, min_precedence: usize) -> Result<Expr, ParseError> {
         let mut lhs = self.unary()?;
         let precedences = vec![
+            vec![TokenType::And, TokenType::Or], // Higher precedence (multiplication/division)
+            vec![TokenType::EqualEqual, TokenType::BangEqual], // Higher precedence (multiplication/division)
+            vec![TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual], // Lower precedence (addition/subtraction)
             vec![TokenType::Plus, TokenType::Minus], // Lower precedence (addition/subtraction)
             vec![TokenType::Star, TokenType::Slash], // Higher precedence (multiplication/division)
         ];
@@ -190,12 +222,19 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
                         TokenType::Plus => Operator::Add,
                         TokenType::Minus => Operator::Subtract,
                         TokenType::Slash => Operator::Divide,
+                        TokenType::And => Operator::And,
+                        TokenType::Or => Operator::Or,
+                        TokenType::EqualEqual => Operator::Equal,
+                        TokenType::BangEqual => Operator::NotEqual,
+                        TokenType::Greater => Operator::GThan,
+                        TokenType::GreaterEqual => Operator::GEThan,
+                        TokenType::Less => Operator::LThan,
+                        TokenType::LessEqual => Operator::LEThan,
                         _ => return Err(self.error(next_token, ErrorType::UnexpectedToken)),
                     },
                     Box::new(rhs),
                 );
             } else {
-                // Push back if no operator is found or the operator has lower precedence
                 self.push_back(next_token);
                 break;
             }
@@ -214,21 +253,17 @@ fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
         matches
     }
 
-    fn program(&mut self) -> Result<Program, ParseError> {
-        let mut exprs = Vec::new();
-        while !self.check(TokenType::EOF) {
-            let expr = self.expr(0)?;
-            exprs.push(expr);
-        }
-        Ok(Program { code: exprs })
+    fn program(&mut self) -> Result<Expr, ParseError> {
+        self.expr(0)
     }
 
-    pub fn parse(&mut self) -> Result<Program, Vec<ParseError>> {
-        let p = self.program();
-        match p {
-            Ok(prog) => {
-                println!("{}", prog);
-                Ok(prog)
+    pub fn parse(&mut self) -> Result<Expr, Vec<ParseError>> {
+        let e = self.program();
+        match e {
+            Ok(exp) => {
+                println!("AST:");
+                println!("{}", exp);
+                Ok(exp)
             },
             Err(e) => {
                 eprintln!("Parsing error: {}", e.message);

@@ -1,5 +1,9 @@
-#[derive(Debug, PartialEq)]
+use std::collections::HashMap;
+
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenType {
+    Ident,
+
     Equal,
 
     Or,
@@ -25,6 +29,7 @@ pub enum TokenType {
     RParen,
 
     NumericLiteral,
+    BoolLiteral,
 
     Error,
     EOF,
@@ -47,15 +52,22 @@ pub struct Scanner<'a> {
     start: usize,
     current: usize,
     line: u32,
+    keywords: HashMap<&'static str, TokenType>
 }
 
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
+        let mut keywords = HashMap::new();
+        keywords.insert("and", TokenType::And);
+        keywords.insert("or", TokenType::Or);
+        keywords.insert("true", TokenType::BoolLiteral);
+        keywords.insert("false", TokenType::BoolLiteral);
         Scanner {
             source,
             start: 0,
             current: 0,
             line: 1,
+            keywords
         }
     }
 
@@ -112,6 +124,23 @@ impl<'a> Scanner<'a> {
         }
         self.make_token(TokenType::NumericLiteral)
     }
+
+    fn ident(&mut self) -> Token<'a> {
+        while let Some(c) = self.peek() {
+            if c.is_alphanumeric() || c == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let lexeme = self.lexeme();
+        let token_type = self.keywords
+            .get(lexeme)
+            .copied()
+            .unwrap_or(TokenType::Ident);
+        self.make_token(token_type)
+    }
+
     
     fn skip_whitespace(&mut self) {
         while let Some(c) = self.peek() {
@@ -169,6 +198,8 @@ impl<'a> Scanner<'a> {
                 _ => {
                     if c.is_numeric() {
                         self.number()
+                    } else if c.is_alphabetic() {
+                        self.ident()
                     } else {
                         self.error_token()
                     }

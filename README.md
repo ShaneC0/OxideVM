@@ -22,12 +22,15 @@
     abstractly: execute bytecode instructions and maintain runtime state
 
 # Toy Grammar
-    program       ::= expression* eof
-    expression    ::= add_expr
-    add_expr      ::= mult_expr ( ( "+" | "-" ) mult_expr )?
-    mult_expr     ::= unary_expr( ( "*" | "/" ) unary_expr )?
-    unary_expr    ::= ( "!" | "-" ) unary_expr | primary_expr
-    primary_expr  ::= number_literal | "(" expression ")"
+    program         ::= expression eof
+    expression      ::= logic_expr
+    logic_expr      ::= equal_expr ( ( "and" | "or" ) equal_expr )?
+    equal_expr      ::= relational_expr ( ( "==" | "!=" ) relational_expr )?
+    relational_expr ::= add_expr ( ( "<" | "<=" | ">" | ">") add_expr )?
+    add_expr        ::= mult_expr ( ( "+" | "-" ) mult_expr )?
+    mult_expr       ::= unary_expr( ( "*" | "/" ) unary_expr )?
+    unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
+    primary_expr    ::= number_literal | bool_literal | "(" expression ")"
 
 # Tokens 
 

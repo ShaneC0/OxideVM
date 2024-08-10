@@ -2,7 +2,8 @@ mod layers;
 
 use layers::scanner::{Scanner, TokenType};
 use layers::vm::{VM, OpCode};
-use layers::parser::{Parser};
+use layers::parser::{Parser, Program, ParseError, Expr};
+use layers::compiler::{Compiler};
 
 
 
@@ -17,16 +18,25 @@ fn print_tokens(input: &str) {
     }
 }
 
-fn run_prog(input: &str) {
+fn run_prog(input: &str) -> Result<Expr, Vec<ParseError>> {
     let mut p = Parser::new(&input);
-    let result = p.parse();
-    match result {
-        Ok(_) => println!("hooray"),
-        Err(_) => println!("oh no!")
+    p.parse()
+}
+fn compiler_stuff(input: &str) {
+    println!("Input String: {}", input);
+    let ast = run_prog(&input).unwrap();
+    let mut c = Compiler::new();
+    c.compile(ast);
+    println!("Bytecode:");
+    for inst in &c.chunk {
+        print!("{:02x} ", inst);
     }
+    println!("\nExec:");
+    let mut vm = VM::new(c.chunk.clone(), c.constants.clone());
+    vm.run();
 }
 
 fn main() {
-    let input = String::from("-2 + -5.0 / (20) * 2.5400 - 500");
-    run_prog(&input);
+    let input = String::from("1 > 2");
+    compiler_stuff(&input);
 }
