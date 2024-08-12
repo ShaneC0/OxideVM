@@ -19,11 +19,6 @@ fn pipeline(input: &str) {
 }
 
 fn main() {
-    let input = "let x = 2841 * 125 / 16243 + (1285 + 82 - (1295125)) + (109241 * 018295125) / 1254 + 10825;
-                 let y = 10825 * 1012085 / 10825212;
-                 print x + y;
-                 print x > y;
-                 let z = x + y;
-                 print z - x;";
+    let input = "let x = \"shane\"; { x = 20; print x; } print x;";
     pipeline(input);
 }

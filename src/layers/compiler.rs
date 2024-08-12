@@ -7,7 +7,8 @@ pub struct Compiler {
     pub chunk: Vec<u8>,
     pub constants: Vec<Value>,
     pub interner: StringInterner,
-    pub locals: Vec<(String, usize)>
+    pub locals: Vec<(String, i32)>,
+    pub scope_depth: i32,
 }
 
 impl Compiler {
@@ -16,7 +17,8 @@ impl Compiler {
             chunk: vec![],
             constants: vec![],
             interner: StringInterner::new(),
-            locals: vec![]
+            locals: vec![],
+            scope_depth: 0
         }
     }
 
@@ -30,6 +32,15 @@ impl Compiler {
         }
         self.constants.push(val);
         (self.constants.len() - 1).try_into().unwrap()
+    }
+
+    fn resolve_local(&self, name: &str) -> i32 {
+        for (idx, local) in self.locals.iter().rev().enumerate() {
+            if local.0 == name {
+                return idx.try_into().unwrap();
+            }
+        }
+        return -1;
     }
 
     pub fn compile_expr(&mut self, expr: Expr) {
@@ -51,11 +62,16 @@ impl Compiler {
                 self.emit_byte(const_idx);
             }
             Expr::Ident(name) => {
-                self.emit_byte(OpCode::GetGlobal as u8);
-                let interned_name = self.interner.intern_str(&name);
-                let const_idx = self.store_constant(Value::String(interned_name));
-                self.emit_byte(const_idx);
-
+                let arg = self.resolve_local(&name);
+                if arg != -1 {
+                    self.emit_byte(OpCode::GetLocal as u8);
+                    self.emit_byte(arg.try_into().unwrap());
+                } else {
+                    self.emit_byte(OpCode::GetGlobal as u8);
+                    let interned_name = self.interner.intern_str(&name);
+                    let const_idx = self.store_constant(Value::String(interned_name));
+                    self.emit_byte(const_idx);
+                }
             }
             Expr::Binary(left, op, right) => {
                 self.compile_expr(*left);
@@ -119,27 +135,56 @@ impl Compiler {
             }
             Stmt::Assign(ident, expr) => {
                 self.compile_expr(*expr);
-                self.emit_byte(OpCode::SetGlobal as u8);
-                let interned_name = self.interner.intern_str(&ident);
-                let name_idx = self.store_constant(Value::String(interned_name));
-                self.emit_byte(name_idx);
+                let arg = self.resolve_local(&ident);
+                if arg != -1 {
+                    self.emit_byte(OpCode::SetLocal as u8);
+                    self.emit_byte(arg.try_into().unwrap())
+                } else {
+                    self.emit_byte(OpCode::SetGlobal as u8);
+                    let interned_name = self.interner.intern_str(&ident);
+                    let name_idx = self.store_constant(Value::String(interned_name));
+                    self.emit_byte(name_idx);
+                }
             }
-            Stmt::Block(decls) => self.compile_prog(decls),
+            Stmt::Block(decls) => {
+                self.scope_depth += 1;
+                self.compile_prog(decls);
+                self.scope_depth -= 1;
+                while self.locals.len() > 0 && self.locals[self.locals.len() - 1].1 > self.scope_depth {
+                    self.emit_byte(OpCode::Pop as u8);
+                    self.locals.pop();
+                }
+            }
         }
     }
 
     pub fn compile_decl(&mut self, decl: Decl) {
         match decl {
             Decl::Var(name, initializer) => {
-                let interned_name = self.interner.intern_str(&name);
                 if let Some(expr) = *initializer {
                     self.compile_expr(expr);
                 } else {
                     self.emit_byte(OpCode::Nil as u8);
                 }
-                let name_idx = self.store_constant(Value::String(interned_name));
-                self.emit_byte(OpCode::DefineGlobal as u8);
-                self.emit_byte(name_idx);
+                if self.scope_depth > 0 {
+                    if self.locals.len() == 255 {
+                        panic!("Compiler error: Too many locals!");
+                    }
+                    for local in self.locals.iter().rev() {
+                        if local.1 != -1 && local.1 < self.scope_depth {
+                            break;
+                        }
+                        if name == local.0 {
+                            panic!("Attempt to redefine local variable {}", local.0);
+                        }
+                    }
+                    self.locals.push((name, self.scope_depth));
+                } else {
+                    let interned_name = self.interner.intern_str(&name);
+                    let name_idx = self.store_constant(Value::String(interned_name));
+                    self.emit_byte(OpCode::DefineGlobal as u8);
+                    self.emit_byte(name_idx);
+                }
             }
             Decl::Stmt(stmt) => self.compile_stmt(*stmt),
         }

@@ -21,6 +21,8 @@ pub enum OpCode {
     DefineGlobal,
     GetGlobal,
     SetGlobal,
+    GetLocal,
+    SetLocal,
     Return
 }
 
@@ -157,6 +159,18 @@ impl VM {
                             let value = self.pop();
                             self.globals.insert(ident_name, value);
                         }
+                    }
+                }
+                x if x == OpCode::GetLocal as u8 => {
+                    if let Some(stack_slot) = self.read_byte() {
+                        self.push(self.stack[stack_slot as usize]);
+                    }
+                }
+                x if x == OpCode::SetLocal as u8 => {
+                    if let Some(stack_slot) = self.read_byte() {
+                        let val = self.pop();
+                        self.stack[stack_slot as usize] = val;
+                        self.push(val);
                     }
                 }
                 x if x == OpCode::Return as u8 => {
