@@ -1,8 +1,10 @@
 use crate::layers::value::Value;
+use crate::layers::interner::StringInterner;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum OpCode {
-    Constant = 0xF0,
+    Constant = 0x01,
     Add,
     Subtract,
     Multiply,
@@ -14,29 +16,38 @@ pub enum OpCode {
     Equal,
     Swap,
     Print,
+    Pop,
+    Nil,
+    DefineGlobal,
+    GetGlobal,
+    SetGlobal,
     Return
 }
 
 pub struct VM {
     program: Vec<u8>,
     constants: Vec<Value>,
+    pub globals: HashMap<String, Value>,
+    pub strings: StringInterner,
     ip: usize,
     stack: [Value; 256],
     sp: usize,
 }
 
 impl VM {
-    pub fn new(program: Vec<u8>, constants: Vec<Value>) -> Self {
+    pub fn new(program: Vec<u8>, constants: Vec<Value>, strings: StringInterner) -> Self {
         VM {
             program,
             constants,
+            globals: HashMap::new(),
+            strings,
             ip: 0,
             stack: [Value::Nil; 256],
-            sp: 0
+            sp: 0,
         }
     }
 
-    fn push(&mut self,val: Value) {
+    fn push(&mut self, val: Value) {
         if self.sp == 255 {
             panic!("Stack Overflow!!!!");
         }
@@ -62,17 +73,6 @@ impl VM {
         }
     }
 
-    fn print_stack(&self) {
-        print!("Stack: [");
-        for i in 0..self.sp {
-            print!("{:?}", self.stack[i]);
-            if i < self.sp - 1 {
-                print!(", ");
-            }
-        }
-        println!("]");
-    }   
-
     fn binary_op(&mut self, op: fn(Value, Value) -> Value) {
         let b = self.pop();
         let a = self.pop();
@@ -86,13 +86,11 @@ impl VM {
 
     pub fn run(&mut self) {
         while let Some(byte) = self.read_byte() {
-            self.print_stack();
-            println!("{:02x}", byte);
             match byte {
                 x if x == OpCode::Constant as u8 => {
                     if let Some(arg) = self.read_byte() {
                         self.push(self.constants[arg as usize]);
-                    } 
+                    }
                 }
                 x if x == OpCode::Add as u8 => self.binary_op(|a, b| a + b),
                 x if x == OpCode::Subtract as u8 => self.binary_op(|a, b| a - b),
@@ -116,9 +114,55 @@ impl VM {
                     self.push(b);
                     self.push(a);
                 }
-                x if x == OpCode::Print as u8 => println!("{}", self.pop()),
-                x if x == OpCode::Return as u8 => {self.pop();},
-                _ => panic!("Unknown instruction: {:02X}", byte)
+                x if x == OpCode::Print as u8 => {
+                    let val = self.pop();
+                    if let Value::String(idx) = val {
+                        let intern = self.strings.get_interned_str(idx);
+                        println!("STDOUT --- {}", intern);
+                    } else {
+                        println!("STDOUT --- {}", val);
+                    }
+                }
+                x if x == OpCode::Pop as u8 => {
+                    self.pop();
+                }
+                x if x == OpCode::Nil as u8 => self.push(Value::Nil),
+                x if x == OpCode::DefineGlobal as u8 => {
+                    if let Some(arg) = self.read_byte() {
+                        let ident_val = self.constants[arg as usize];
+                        if let Value::String(ident_idx) = ident_val {
+                            let ident_name = self.strings.get_interned_str(ident_idx).to_string();
+                            let value = self.pop();
+                            self.globals.insert(ident_name, value);
+                        }
+                    }
+                }
+                x if x == OpCode::GetGlobal as u8 => {
+                    if let Some(arg) = self.read_byte() {
+                        let ident_val = self.constants[arg as usize];
+                        if let Value::String(ident_idx) = ident_val {
+                            let ident_name = self.strings.get_interned_str(ident_idx).to_string();
+                            match self.globals.get(&ident_name) {
+                                Some(val) => self.push(*val),
+                                None => panic!("Attempt to access undeclared variable '{}'.", ident_name)
+                            }
+                        }
+                    }
+                }
+                x if x == OpCode::SetGlobal as u8 => {
+                    if let Some(arg) = self.read_byte() {
+                        let ident_val = self.constants[arg as usize];
+                        if let Value::String(ident_idx) = ident_val {
+                            let ident_name = self.strings.get_interned_str(ident_idx).to_string();
+                            let value = self.pop();
+                            self.globals.insert(ident_name, value);
+                        }
+                    }
+                }
+                x if x == OpCode::Return as u8 => {
+                    self.pop();
+                }
+                _ => panic!("Unknown instruction: {:02X}", byte),
             }
         }
     }

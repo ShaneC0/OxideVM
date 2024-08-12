@@ -1,7 +1,6 @@
-use crate::layers::scanner::{Token, TokenType, Scanner};
-use std::collections::HashMap;
+use crate::layers::scanner::{Scanner, Token, TokenType};
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
-
 
 #[derive(Debug, Clone)]
 pub enum ErrorType {
@@ -56,7 +55,7 @@ pub enum Operator {
     LEThan,
     Equal,
     NotEqual,
-    Not
+    Not,
 }
 
 impl fmt::Debug for Operator {
@@ -75,131 +74,127 @@ impl fmt::Debug for Operator {
             Operator::LEThan => "<=",
             Operator::Equal => "==",
             Operator::NotEqual => "!=",
-            Operator::Not => "!"
+            Operator::Not => "!",
         };
         write!(f, "{}", op_str)
     }
 }
 
 #[derive(Debug)]
-pub enum Stmt {
-    Print(Box<Expr>),
-    ExprStmt(Box<Expr>),
-    Block(Vec<Box<Stmt>>)
+pub enum Decl {
+    Var(String, Box<Option<Expr>>),
+    Stmt(Box<Stmt>),
 }
 
-impl fmt::Display for Stmt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_stmt(stmt: &Stmt, f: &mut fmt::Formatter<'_>, indent_level: usize) -> fmt::Result {
-            let indent = "  ".repeat(indent_level);
-            match stmt {
-                Stmt::Print(expr) => {
-                    writeln!(f, "{}Print(", indent)?;
-                    writeln!(f, "{}  expr:", indent)?;
-                    write!(f, "{}", expr)?;
-                    writeln!(f, "\n{})", indent)
-                }
-                Stmt::ExprStmt(expr) => {
-                    writeln!(f, "{}ExprStmt(", indent)?;
-                    write!(f, "{}", expr)?;
-                    writeln!(f, "\n{})", indent)
-                }
-                Stmt::Block(stmts) => {
-                    writeln!(f, "{}Block {{", indent)?;
-                    for stmt in stmts {
-                        fmt_stmt(stmt, f, indent_level + 2)?;
-                        writeln!(f)?;
-                    }
-                    write!(f, "{}}}", indent)
-                }
-            }
-        }
-
-        fmt_stmt(self, f, 0)
-    }
+#[derive(Debug)]
+pub enum Stmt {
+    Print(Box<Expr>),
+    Expr(Box<Expr>),
+    Block(Vec<Box<Decl>>),
+    Assign(String, Box<Expr>)
 }
 
 #[derive(Debug)]
 pub enum Expr {
     Number(f64),
     Bool(bool),
+    String(String),
+    Ident(String),
     Binary(Box<Expr>, Operator, Box<Expr>),
     Unary(Operator, Box<Expr>),
-    Group(Box<Expr>)
+    Group(Box<Expr>),
+}
+
+pub struct AST {
+    pub decls: Vec<Box<Decl>>,
+}
+
+
+impl fmt::Display for Decl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Decl::Var(name, expr_opt) => {
+                if let Some(expr) = expr_opt.as_ref() {
+                    write!(f, "Decl::Var\n  Name: {}\n  Expr:\n    {}", name, expr)
+                } else {
+                    write!(f, "Decl::Var\n  Name: {}", name)
+                }
+            }
+            Decl::Stmt(stmt) => write!(f, "Decl::Stmt\n  {}", stmt),
+        }
+    }
+}
+
+impl fmt::Display for Stmt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Stmt::Print(expr) => write!(f, "Stmt::Print\n  Expr:\n    {}", expr),
+            Stmt::Expr(expr) => write!(f, "Stmt::Expr\n  {}", expr),
+            Stmt::Assign(name, expr) => write!(f, "Stmt::Assign\n    Ident:\n      {}\n    Expr:\n     {}", name, expr),
+            Stmt::Block(stmts) => {
+                write!(f, "Stmt::Block")?;
+                for stmt in stmts {
+                    write!(f, "\n  {}", stmt)?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_expr(expr: &Expr, f: &mut fmt::Formatter<'_>, indent_level: usize) -> fmt::Result {
-            let indent = "  ".repeat(indent_level);
-            match expr {
-                Expr::Number(value) => write!(f, "{}Number({})", indent, value),
-                Expr::Bool(value) => write!(f, "{}Bool({})", indent, value),
-                Expr::Binary(left, op, right) => {
-                    writeln!(f, "{}Binary(", indent)?;
-                    writeln!(f, "{}  left:", indent)?;
-                    fmt_expr(left, f, indent_level + 2)?;
-                    writeln!(f, ",")?;
-                    writeln!(f, "{}  op: {:?}", indent, op)?;
-                    writeln!(f, "{}  right:", indent)?;
-                    fmt_expr(right, f, indent_level + 2)?;
-                    write!(f, "\n{})", indent)
-                }
-                Expr::Unary(op, expr) => {
-                    writeln!(f, "{}Unary(", indent)?;
-                    writeln!(f, "{}  op: {:?}", indent, op)?;
-                    writeln!(f, "{}  expr:", indent)?;
-                    fmt_expr(expr, f, indent_level + 2)?;
-                    write!(f, "\n{})", indent)
-                }
-                Expr::Group(expr) => {
-                    writeln!(f, "{}Group(", indent)?;
-                    writeln!(f, "{}  expr:", indent)?;
-                    fmt_expr(expr, f, indent_level + 2)?;
-                    write!(f, "\n{})", indent)
-                }
-            }
+        match self {
+            Expr::Number(n) => write!(f, "Expr::Number: {}", n),
+            Expr::Bool(b) => write!(f, "Expr::Bool: {}", b),
+            Expr::String(s) => write!(f, "Expr::String '{}'", s),
+            Expr::Binary(left, op, right) => write!(f, "Expr::Binary\n  Left:\n    {}\n  Op: {}\n  Right:\n    {}", left, op, right),
+            Expr::Unary(op, expr) => write!(f, "Expr::Unary\n  Op: {}\n  Expr:\n    {}", op, expr),
+            Expr::Ident(n) => write!(f, "Expr::Ident {}", n),
+            Expr::Group(expr) => write!(f, "Expr::Group\n  Expr:\n    {}", expr),
         }
-
-        fmt_expr(self, f, 0)
     }
 }
 
-pub struct Program {
-    pub stmts: Vec<Box<Stmt>>
-}
-
-impl fmt::Display for Program {
+impl fmt::Display for AST {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for expr in &self.stmts {
-            writeln!(f, "{}", expr)?;
+        write!(f, "=== AST ===")?;
+        for decl in &self.decls {
+            write!(f, "\n{}", decl)?;
         }
         Ok(())
     }
 }
 
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Operator: {:?}", self)
+    }
+}
 
 pub struct Parser<'a> {
-    pushed_token: Option<Token<'a>>,
+    pushed_tokens: VecDeque<Token<'a>>,
     scanner: Scanner<'a>,
     errors: Vec<ParseError>,
-    source: &'a str
+    source: &'a str,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(input: &'a str) -> Self {
         Parser {
-            pushed_token: None,
+            pushed_tokens: VecDeque::new(),
             scanner: Scanner::new(input),
             errors: vec![],
-            source: input
+            source: input,
         }
     }
 
     fn error(&mut self, token: Token, kind: ErrorType) -> ParseError {
         let message = match &kind {
             ErrorType::InvalidLiteral => format!("Failed to parse literal '{}'.", token.lexeme),
-            ErrorType::ExpectedToken(expected) => format!("Expected {:?} but found '{}'", expected, token.lexeme),
+            ErrorType::ExpectedToken(expected) => {
+                format!("Expected {:?} but found '{}'", expected, token.lexeme)
+            }
             ErrorType::UnexpectedToken => format!("Unexpected token '{}'", token.lexeme),
         };
         let error = ParseError::new(kind, &token, message);
@@ -213,7 +208,6 @@ impl<'a> Parser<'a> {
         loop {
             match token.kind {
                 TokenType::Semicolon | TokenType::RBrace => {
-                    self.push_back(token);
                     break;
                 }
                 _ => {
@@ -224,17 +218,14 @@ impl<'a> Parser<'a> {
     }
 
     fn push_back(&mut self, token: Token<'a>) {
-        self.pushed_token = Some(token);
+        self.pushed_tokens.push_back(token);
     }
 
     fn next(&mut self) -> Token<'a> {
-        if let Some(token) = self.pushed_token.take() {
+        if let Some(token) = self.pushed_tokens.pop_front() {
             token
         } else {
-            let token = self.scanner.next();
-            match token.kind {
-                _ => token
-            }
+            self.scanner.next()
         }
     }
 
@@ -248,18 +239,15 @@ impl<'a> Parser<'a> {
     fn primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.next();
         match token.kind {
-            TokenType::NumericLiteral => {
-                match token.lexeme.parse::<f64>() {
-                    Ok(lit) => Ok(Expr::Number(lit)),
-                    Err(_) => Err(self.error(token, ErrorType::InvalidLiteral))
-                }
+            TokenType::NumericLiteral => match token.lexeme.parse::<f64>() {
+                Ok(lit) => Ok(Expr::Number(lit)),
+                Err(_) => Err(self.error(token, ErrorType::InvalidLiteral)),
             },
-            TokenType::BoolLiteral => {
-                match token.lexeme.parse::<bool>() {
-                    Ok(lit) => Ok(Expr::Bool(lit)),
-                    Err(_) => Err(self.error(token, ErrorType::InvalidLiteral))
-                }
+            TokenType::BoolLiteral => match token.lexeme.parse::<bool>() {
+                Ok(lit) => Ok(Expr::Bool(lit)),
+                Err(_) => Err(self.error(token, ErrorType::InvalidLiteral)),
             },
+            TokenType::StringLiteral => Ok(Expr::String(token.lexeme.to_string())),
             TokenType::LParen => {
                 let expression = self.expr(0)?;
                 let token = self.next();
@@ -271,6 +259,7 @@ impl<'a> Parser<'a> {
                     Ok(Expr::Group(Box::new(expression)))
                 }
             },
+            TokenType::Identifier => Ok(Expr::Ident(token.lexeme.to_string())),
             _ => {
                 let e = self.error(token, ErrorType::UnexpectedToken);
                 self.synchronize();
@@ -285,11 +274,11 @@ impl<'a> Parser<'a> {
             TokenType::Minus => {
                 let operand = self.unary()?;
                 Ok(Expr::Unary(Operator::Negate, Box::new(operand)))
-            },
+            }
             TokenType::Bang => {
                 let operand = self.unary()?;
                 Ok(Expr::Unary(Operator::Not, Box::new(operand)))
-            },
+            }
             _ => {
                 self.push_back(token);
                 self.primary()
@@ -309,7 +298,7 @@ impl<'a> Parser<'a> {
         precedence_map.insert(TokenType::Less, 3);
         precedence_map.insert(TokenType::LessEqual, 3);
         precedence_map.insert(TokenType::Plus, 4);
-        precedence_map.insert(TokenType::Minus, 4);
+        precedence_map.insert(TokenType::Minus, 5);
         precedence_map.insert(TokenType::Star, 5);
         precedence_map.insert(TokenType::Slash, 5);
         loop {
@@ -349,10 +338,10 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(lhs)
-
     }
+
     fn print_stmt(&mut self) -> Result<Stmt, ParseError> {
-        let expr = self.expr(0)?; 
+        let expr = self.expr(0)?;
         let next_token = self.next();
         if next_token.kind != TokenType::Semicolon {
             let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
@@ -362,48 +351,116 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Print(Box::new(expr)))
     }
 
+    fn expr_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let expr = self.expr(0)?;
+        let next_token = self.next();
+        if next_token.kind != TokenType::Semicolon {
+            let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
+            self.synchronize();
+            Err(e)
+        } else {
+            Ok(Stmt::Expr(Box::new(expr)))
+        }
+    }
+
+    fn block_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let mut decls = Vec::new();
+        while !self.check(TokenType::RBrace) && !self.check(TokenType::EOF) {
+            decls.push(Box::new(self.decl()?));
+        }
+        let next_token = self.next();
+        if next_token.kind != TokenType::RBrace {
+            let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::RBrace));
+            self.synchronize();
+            Err(e)
+        } else {
+            Ok(Stmt::Block(decls))
+        }
+    }
+
+    fn assign_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let ident = self.next();
+        self.next();
+        let expr = self.expr(0)?;
+        let semi = self.next();
+        if semi.kind != TokenType::Semicolon {
+            let e = self.error(semi, ErrorType::ExpectedToken(TokenType::Semicolon));
+            self.synchronize();
+            Err(e)
+        } else {
+            Ok(Stmt::Assign(ident.lexeme.to_string(), Box::new(expr)))
+        }
+    }
+
     fn stmt(&mut self) -> Result<Stmt, ParseError> {
         let token = self.next();
         match token.kind {
             TokenType::Print => self.print_stmt(),
-            TokenType::LBrace => {
-                let mut stmts = Vec::new();
-                while !self.check(TokenType::RBrace) && !self.check(TokenType::EOF) {
-                    stmts.push(Box::new(self.stmt()?));
-                }
+            TokenType::LBrace => self.block_stmt(),
+            TokenType::Identifier => {
                 let next_token = self.next();
-                if next_token.kind != TokenType::RBrace {
-                    let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::RBrace));
-                    self.synchronize();
-                    Err(e)
+                if next_token.kind == TokenType::Equal {
+                    self.push_back(token);
+                    self.push_back(next_token);
+                    self.assign_stmt()
                 } else {
-                    Ok(Stmt::Block(stmts))
+                    self.push_back(token);
+                    self.push_back(next_token);
+                    self.expr_stmt()
                 }
             }
             _ => {
                 self.push_back(token);
-                let expr = self.expr(0)?;
-                let next_token = self.next();
-                if next_token.kind != TokenType::Semicolon {
-                    let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
-                    self.synchronize();
-                    Err(e)
-                } else {
-                    Ok(Stmt::ExprStmt(Box::new(expr)))
-                }
+                self.expr_stmt()
             }
         }
     }
 
-    fn program(&mut self) -> Result<Program, ParseError> {
-        let mut stmts = Vec::new();
-        while !self.check(TokenType::EOF) {
-            stmts.push(Box::new(self.stmt()?));
+    fn let_decl(&mut self) -> Result<Decl, ParseError> {
+        let ident = self.next();
+        if ident.kind != TokenType::Identifier {
+            let e = self.error(ident, ErrorType::ExpectedToken(TokenType::Identifier));
+            self.synchronize();
+            return Err(e);
         }
-        Ok(Program{stmts})
+        let name = ident.lexeme.to_string();
+        let token = self.next();
+        let initializer: Option<Expr>;
+        if token.kind == TokenType::Equal {
+            initializer = Some(self.expr(0)?);
+        } else {
+            self.push_back(token);
+            initializer = None;
+        }
+        let semi = self.next();
+        if semi.kind != TokenType::Semicolon {
+            let e = self.error(semi, ErrorType::ExpectedToken(TokenType::Semicolon));
+            self.synchronize();
+            return Err(e);
+        }
+        Ok(Decl::Var(name, Box::new(initializer)))
     }
 
-    pub fn parse(&mut self) -> Result<Program, Vec<ParseError>> {
+    fn decl(&mut self) -> Result<Decl, ParseError> {
+        let next_token = self.next();
+        if next_token.kind == TokenType::Let {
+            self.let_decl()
+        } else {
+            self.push_back(next_token);
+            let stmt = self.stmt()?;
+            Ok(Decl::Stmt(Box::new(stmt)))
+        }
+    }
+
+    fn program(&mut self) -> Result<AST, ParseError> {
+        let mut decls = Vec::new();
+        while !self.check(TokenType::EOF) {
+            decls.push(Box::new(self.decl()?));
+        }
+        Ok(AST { decls })
+    }
+
+    pub fn parse(&mut self) -> Result<AST, Vec<ParseError>> {
         match self.program() {
             Ok(p) => {
                 if self.errors.is_empty() {
@@ -411,7 +468,7 @@ impl<'a> Parser<'a> {
                 } else {
                     Err(self.errors.clone())
                 }
-            } 
+            }
             Err(_) => {
                 self.synchronize();
                 Err(self.errors.clone())

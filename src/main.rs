@@ -1,42 +1,29 @@
 mod layers;
-
-use layers::scanner::{Scanner, TokenType};
-use layers::vm::VM;
-use layers::parser::{Parser, ParseError, Program};
+use layers::parser::Parser;
 use layers::compiler::Compiler;
+use layers::vm::VM;
 
-fn print_tokens(input: &str) {
-    let mut scanner = Scanner::new(&input);
-    loop {
-        let t = scanner.next();
-        if t.kind == TokenType::EOF {
-            break;
+fn pipeline(input: &str) {
+    let mut p = Parser::new(input);
+    match p.parse() {
+        Ok(prog) => {
+            println!("{}", prog);
+            let mut c = Compiler::new();
+            c.compile(prog);
+            println!("");
+            let mut vm = VM::new(c.chunk.clone(), c.constants.clone(), c.interner.clone());
+            vm.run();
         }
-        println!("{:#?} {:?}", t.kind, t.lexeme);
+        Err(errors) => println!("{:?}", errors),
     }
-}
-
-fn run_prog(input: &str) -> Result<Program, Vec<ParseError>> {
-    let mut p = Parser::new(&input);
-    p.parse()
-}
-
-fn go(input: &str) {
-    println!("Input String: {}", input);
-    print_tokens(&input);
-    let ast = run_prog(&input).unwrap();
-    let mut c = Compiler::new();
-    c.compile(ast);
-    println!("Bytecode:");
-    for inst in &c.chunk {
-        print!("{:02x} ", inst);
-    }
-    println!("\nExec:");
-    let mut vm = VM::new(c.chunk.clone(), c.constants.clone());
-    vm.run();
 }
 
 fn main() {
-    let input = String::from("print false or (false or true);");
-    go(&input);
+    let input = "let x = 2841 * 125 / 16243 + (1285 + 82 - (1295125)) + (109241 * 018295125) / 1254 + 10825;
+                 let y = 10825 * 1012085 / 10825212;
+                 print x + y;
+                 print x > y;
+                 let z = x + y;
+                 print z - x;";
+    pipeline(input);
 }

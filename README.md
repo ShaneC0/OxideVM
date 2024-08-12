@@ -16,27 +16,31 @@
         - Unrecognized tokens: Return a special 'error token'.
 
 # parser.rs
-    builds ast
-        
-# vm.rs
-    abstractly: execute bytecode instructions and maintain runtime state
+    Parsing is the process of composing the tokens of a program into a tree-structure called an AST or "abstract syntax tree".
+    An AST is a data structure that encompasses the recursive syntactic structure of programs.
+    For example, the input string
+    """
+    let a = 25 / 3;
+    """
+    Is parsed into the following tree structure:
+    """
+    Declaration:
+      Ident: a
+      Expr: 
+        Binary:
+          Left: 25
+          Op:   /
+          Right: 3
+    """
 
-# Toy Grammar
-    program         ::= expression eof
-    expression      ::= logic_expr
-    logic_expr      ::= equal_expr ( ( "and" | "or" ) equal_expr )?
-    equal_expr      ::= relational_expr ( ( "==" | "!=" ) relational_expr )?
-    relational_expr ::= add_expr ( ( "<" | "<=" | ">" | ">") add_expr )?
-    add_expr        ::= mult_expr ( ( "+" | "-" ) mult_expr )?
-    mult_expr       ::= unary_expr( ( "*" | "/" ) unary_expr )?
-    unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
-    primary_expr    ::= number_literal | bool_literal | "(" expression ")"
-
-# Statements!
-    program         ::= stmt* eof
-    stmt            ::= print_stmt | expr_stmt | block
+# Declarations and Definitions!
+    program         ::= decl* eof
+    decl            ::= let_decl | stmt
+    let_decl        ::= "let" ident ( "=" expr )? ";"
+    stmt            ::= print_stmt | expr_stmt | assign_stmt | block
     print_stmt      ::= "print" expr ";"
     expr_stmt       ::= expression ";"
+    assign_stmt     ::= ident "=" expr ";"
     block           ::= "{" stmt* "}"
     expr            ::= logic_expr
     logic_expr      ::= equal_expr ( ( "and" | "or" ) logic_expr )?
@@ -45,7 +49,9 @@
     add_expr        ::= mult_expr ( ( "+" | "-" ) add_expr )?
     mult_expr       ::= unary_expr( ( "*" | "/" ) mult_expr )?
     unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
-    primary_expr    ::= number_literal | bool_literal | identifier | "(" expr ")"
+    primary_expr    ::= number_literal | bool_literal | string_literal| identifier | "(" expr ")"
 
-# Variables
+Global vars implemented!
+
+# Unify error handling!
 

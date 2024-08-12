@@ -4,7 +4,9 @@ use std::collections::HashMap;
 pub enum TokenType {
     Print,
 
-    Ident,
+    Let,
+
+    Identifier,
 
     Equal,
 
@@ -32,6 +34,7 @@ pub enum TokenType {
 
     NumericLiteral,
     BoolLiteral,
+    StringLiteral,
 
     LBrace,
     RBrace,
@@ -51,7 +54,12 @@ pub struct Token<'a> {
 
 impl<'a> Token<'a> {
     pub fn new(kind: TokenType, lexeme: &'a str, line: usize, column: usize) -> Self {
-        Token { kind, lexeme, line, column}
+        Token {
+            kind,
+            lexeme,
+            line,
+            column,
+        }
     }
 }
 
@@ -61,7 +69,7 @@ pub struct Scanner<'a> {
     current: usize,
     line: usize,
     line_start: usize,
-    keywords: HashMap<&'static str, TokenType>
+    keywords: HashMap<&'static str, TokenType>,
 }
 
 impl<'a> Scanner<'a> {
@@ -72,13 +80,14 @@ impl<'a> Scanner<'a> {
         keywords.insert("true", TokenType::BoolLiteral);
         keywords.insert("false", TokenType::BoolLiteral);
         keywords.insert("print", TokenType::Print);
+        keywords.insert("let", TokenType::Let);
         Scanner {
             source,
             start: 0,
             current: 0,
             line: 1,
             line_start: 0,
-            keywords
+            keywords,
         }
     }
 
@@ -101,7 +110,7 @@ impl<'a> Scanner<'a> {
             kind,
             self.lexeme(),
             self.line,
-            self.current - self.line_start
+            self.current - self.line_start,
         );
         self.start = self.current;
         t
@@ -116,7 +125,12 @@ impl<'a> Scanner<'a> {
     }
 
     fn error_token(&mut self) -> Token<'a> {
-        Token::new(TokenType::Error, self.lexeme(), self.line, self.current - self.start)
+        Token::new(
+            TokenType::Error,
+            self.lexeme(),
+            self.line,
+            self.current - self.start,
+        )
     }
 
     fn number(&mut self) -> Token<'a> {
@@ -124,7 +138,7 @@ impl<'a> Scanner<'a> {
         while let Some(c) = self.peek() {
             if c == '.' {
                 if dot_seen {
-                    return self.error_token(); 
+                    return self.error_token();
                 }
                 dot_seen = true;
                 self.advance();
@@ -134,8 +148,7 @@ impl<'a> Scanner<'a> {
                 break;
             }
         }
-        if dot_seen && self.peek().map_or(false, |c| !c.is_numeric()) {
-        }
+        if dot_seen && self.peek().map_or(false, |c| !c.is_numeric()) {}
 
         self.make_token(TokenType::NumericLiteral)
     }
@@ -149,18 +162,37 @@ impl<'a> Scanner<'a> {
             }
         }
         let lexeme = self.lexeme();
-        let token_type = self.keywords
+        let token_type = self
+            .keywords
             .get(lexeme)
             .copied()
-            .unwrap_or(TokenType::Ident);
+            .unwrap_or(TokenType::Identifier);
         self.make_token(token_type)
     }
 
-    
+    fn string(&mut self) -> Token<'a> {
+        while let Some(c) = self.peek() {
+            if c == '"' {
+                self.advance();
+                break;
+            } else if self.current == self.source.len() {
+                panic!("Unterminated string literal!");
+            } else {
+                self.advance();
+            }
+        }
+        Token {
+            kind: TokenType::StringLiteral,
+            lexeme: &self.source[self.start + 1..self.current - 1],
+            column: self.current - self.line_start,
+            line: self.line,
+        }
+    }
+
     fn skip_whitespace(&mut self) {
         while let Some(c) = self.peek() {
             match c {
-                ' ' | '\r' | '\t' => self.advance(), 
+                ' ' | '\r' | '\t' => self.advance(),
                 '\n' => {
                     self.line += 1;
                     self.line_start = self.current;
@@ -219,6 +251,8 @@ impl<'a> Scanner<'a> {
                         self.number()
                     } else if c.is_alphabetic() {
                         self.ident()
+                    } else if c == '"' {
+                        self.string()
                     } else {
                         self.error_token()
                     }
@@ -229,4 +263,3 @@ impl<'a> Scanner<'a> {
         }
     }
 }
-

@@ -1,10 +1,12 @@
-use std::ops::{Add, Sub, Mul, Div, Neg, Not, BitAnd};
+use std::ops::{Add, BitAnd, Div, Mul, Neg, Not, Sub};
+
 use std::cmp::Ordering;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Value {
     Float(f64),
     Boolean(bool),
+    String(usize),
     Nil,
 }
 
@@ -23,7 +25,7 @@ impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
         match (self, other) {
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
-            _ => None, // Returning None for non-comparable types
+            _ => None,
         }
     }
 
@@ -112,7 +114,7 @@ impl BitAnd for Value {
     fn bitand(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
-            _ => panic!("Cannot apply AND operator on non-boolean values!")
+            _ => panic!("Cannot apply AND operator on non-boolean values!"),
         }
     }
 }
@@ -121,6 +123,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Float(v) => write!(f, "{}", v),
+            Value::String(s) => write!(f, "{}", s),
             Value::Boolean(v) => write!(f, "{}", v),
             Value::Nil => write!(f, "Nil"),
         }
