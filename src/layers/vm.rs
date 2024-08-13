@@ -1,5 +1,5 @@
+use crate::layers::interner::{HeapInterner, HeapType};
 use crate::layers::value::Value;
-use crate::layers::interner::StringInterner;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -23,26 +23,29 @@ pub enum OpCode {
     SetGlobal,
     GetLocal,
     SetLocal,
-    Return
+    Jump,
+    JumpIfFalse,
+    Loop,
+    Return,
 }
 
 pub struct VM {
     program: Vec<u8>,
     constants: Vec<Value>,
     pub globals: HashMap<String, Value>,
-    pub strings: StringInterner,
+    pub interner: HeapInterner,
     ip: usize,
     stack: [Value; 256],
     sp: usize,
 }
 
 impl VM {
-    pub fn new(program: Vec<u8>, constants: Vec<Value>, strings: StringInterner) -> Self {
+    pub fn new(program: Vec<u8>, constants: Vec<Value>, interner: HeapInterner) -> Self {
         VM {
             program,
             constants,
             globals: HashMap::new(),
-            strings,
+            interner,
             ip: 0,
             stack: [Value::Nil; 256],
             sp: 0,
@@ -75,6 +78,17 @@ impl VM {
         }
     }
 
+    pub fn read_short(&mut self) -> Option<u16> {
+        if self.ip + 1 < self.program.len() {
+            let higher = self.program[self.ip];
+            let lower = self.program[self.ip + 1];
+            self.ip += 2;
+            Some(((higher as u16) << 8) | (lower as u16))
+        } else {
+            None
+        }
+    }
+
     fn binary_op(&mut self, op: fn(Value, Value) -> Value) {
         let b = self.pop();
         let a = self.pop();
@@ -84,6 +98,16 @@ impl VM {
     fn unary_op(&mut self, op: fn(Value) -> Value) {
         let n = self.pop();
         self.push(op(n));
+    }
+
+    fn print_stack(&self) {
+        let stack_display: Vec<String> = self.stack[0..self.sp]
+            .iter()
+            .filter(|&&v| v != Value::Nil)
+            .map(|v| format!("{:?}", v))
+            .collect();
+        println!("Stack: {}", stack_display.join(" | "));
+        println!("---------------------------------------------");
     }
 
     pub fn run(&mut self) {
@@ -118,12 +142,15 @@ impl VM {
                 }
                 x if x == OpCode::Print as u8 => {
                     let val = self.pop();
+                    print!("\nSTDOUT: ");
                     if let Value::String(idx) = val {
-                        let intern = self.strings.get_interned_str(idx);
-                        println!("STDOUT --- {}", intern);
+                        if let Some(intern) = self.interner.get(idx) {
+                            print!("{}", intern);
+                        }
                     } else {
-                        println!("STDOUT --- {}", val);
+                        print!("{}", val);
                     }
+                    print!("");
                 }
                 x if x == OpCode::Pop as u8 => {
                     self.pop();
@@ -133,9 +160,11 @@ impl VM {
                     if let Some(arg) = self.read_byte() {
                         let ident_val = self.constants[arg as usize];
                         if let Value::String(ident_idx) = ident_val {
-                            let ident_name = self.strings.get_interned_str(ident_idx).to_string();
-                            let value = self.pop();
-                            self.globals.insert(ident_name, value);
+                            if let Some(HeapType::String(ident_name)) = self.interner.get(ident_idx) {
+                                let name = ident_name.to_string();
+                                let value = self.pop();
+                                self.globals.insert(name, value);
+                            }
                         }
                     }
                 }
@@ -143,10 +172,14 @@ impl VM {
                     if let Some(arg) = self.read_byte() {
                         let ident_val = self.constants[arg as usize];
                         if let Value::String(ident_idx) = ident_val {
-                            let ident_name = self.strings.get_interned_str(ident_idx).to_string();
-                            match self.globals.get(&ident_name) {
-                                Some(val) => self.push(*val),
-                                None => panic!("Attempt to access undeclared variable '{}'.", ident_name)
+                            if let Some(HeapType::String(ident_name)) = self.interner.get(ident_idx) {
+                                match self.globals.get(&ident_name.clone()) {
+                                    Some(val) => self.push(*val),
+                                    None => panic!(
+                                        "Attempt to access undeclared variable '{}'.",
+                                        ident_name
+                                    ),
+                                }
                             }
                         }
                     }
@@ -155,9 +188,11 @@ impl VM {
                     if let Some(arg) = self.read_byte() {
                         let ident_val = self.constants[arg as usize];
                         if let Value::String(ident_idx) = ident_val {
-                            let ident_name = self.strings.get_interned_str(ident_idx).to_string();
-                            let value = self.pop();
-                            self.globals.insert(ident_name, value);
+                            if let Some(HeapType::String(ident_name)) = self.interner.get(ident_idx) {
+                                let name = ident_name.to_string();
+                                let value = self.pop();
+                                self.globals.insert(name, value);
+                            }
                         }
                     }
                 }
@@ -170,7 +205,25 @@ impl VM {
                     if let Some(stack_slot) = self.read_byte() {
                         let val = self.pop();
                         self.stack[stack_slot as usize] = val;
+                    }
+                }
+                x if x == OpCode::Jump as u8 => {
+                    if let Some(offset) = self.read_short() {
+                        self.ip += offset as usize;
+                    }
+                }
+                x if x == OpCode::Loop as u8  => {
+                    if let Some(offset) = self.read_short() {
+                        self.ip -= offset as usize;
+                    }
+                }
+                x if x == OpCode::JumpIfFalse as u8 => {
+                    if let Some(offset) = self.read_short() {
+                        let val = self.pop();
                         self.push(val);
+                        if val == Value::Boolean(false) {
+                            self.ip += offset as usize;
+                        }
                     }
                 }
                 x if x == OpCode::Return as u8 => {

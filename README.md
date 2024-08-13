@@ -17,7 +17,7 @@
 
 # parser.rs
     Parsing is the process of composing the tokens of a program into a tree-structure called an AST or "abstract syntax tree".
-    An AST is a data structure that encompasses the recursive syntactic structure of programs.
+    An AST is a data structure that encompasses the recursive syntactic structure of oxide programs.
     For example, the input string
     """
     let a = 25 / 3;
@@ -33,11 +33,17 @@
           Right: 3
     """
 
-# Declarations and Definitions!
+# What happens when a function is defined?
+
+# What happens when a fucntion is called?
+
+# Functions!
     program         ::= decl* eof
     decl            ::= let_decl | stmt
     let_decl        ::= "let" ident ( "=" expr )? ";"
-    stmt            ::= print_stmt | expr_stmt | assign_stmt | block
+    stmt            ::= if_stmt | while_stmt | print_stmt | expr_stmt | assign_stmt | block
+    if_stmt         ::= "if" "(" expr ")" stmt ( "else" stmt )?
+    while_stmt      ::= "while" "(" expr ")" stmt
     print_stmt      ::= "print" expr ";"
     expr_stmt       ::= expression ";"
     assign_stmt     ::= ident "=" expr ";"
@@ -49,9 +55,5 @@
     add_expr        ::= mult_expr ( ( "+" | "-" ) add_expr )?
     mult_expr       ::= unary_expr( ( "*" | "/" ) mult_expr )?
     unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
-    primary_expr    ::= number_literal | bool_literal | string_literal| identifier | "(" expr ")"
-
-Global vars implemented!
-
-# Unify error handling!
+    primary_expr    ::= number_literal | bool_literal | string_literal | identifier | "(" expr ")"
 

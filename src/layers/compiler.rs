@@ -1,12 +1,12 @@
-use crate::layers::parser::{Decl, Expr, Operator, AST, Stmt};
+use crate::layers::interner::HeapInterner;
+use crate::layers::parser::{Decl, Expr, Operator, Stmt, AST};
 use crate::layers::value::Value;
 use crate::layers::vm::OpCode;
-use crate::layers::interner::StringInterner;
 
 pub struct Compiler {
     pub chunk: Vec<u8>,
     pub constants: Vec<Value>,
-    pub interner: StringInterner,
+    pub interner: HeapInterner,
     pub locals: Vec<(String, i32)>,
     pub scope_depth: i32,
 }
@@ -16,9 +16,9 @@ impl Compiler {
         Compiler {
             chunk: vec![],
             constants: vec![],
-            interner: StringInterner::new(),
+            interner: HeapInterner::new(),
             locals: vec![],
-            scope_depth: 0
+            scope_depth: 0,
         }
     }
 
@@ -57,7 +57,7 @@ impl Compiler {
             }
             Expr::String(literal) => {
                 self.emit_byte(OpCode::Constant as u8);
-                let interned_literal = self.interner.intern_str(&literal);
+                let interned_literal = self.interner.intern(literal);
                 let const_idx = self.store_constant(Value::String(interned_literal));
                 self.emit_byte(const_idx);
             }
@@ -68,7 +68,7 @@ impl Compiler {
                     self.emit_byte(arg.try_into().unwrap());
                 } else {
                     self.emit_byte(OpCode::GetGlobal as u8);
-                    let interned_name = self.interner.intern_str(&name);
+                    let interned_name = self.interner.intern(name);
                     let const_idx = self.store_constant(Value::String(interned_name));
                     self.emit_byte(const_idx);
                 }
@@ -123,12 +123,59 @@ impl Compiler {
         }
     }
 
+    fn emit_jump(&mut self, kind: OpCode) -> usize {
+        self.emit_byte(kind as u8);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        return self.chunk.len() - 2;
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        let jump: u16 = (self.chunk.len() - offset - 2).try_into().unwrap();
+        self.chunk[offset] = (jump >> 8) as u8;
+        self.chunk[offset + 1] = (jump & 0xff) as u8;
+    }
+
+    fn emit_loop(&mut self, start: usize) {
+        self.emit_byte(OpCode::Loop as u8);
+        let jump: u16 = (self.chunk.len() - start + 2).try_into().unwrap();
+        if jump > 65534 {
+            panic!("Loop body too large!");
+        }
+        self.emit_byte((jump >> 8) as u8);
+        self.emit_byte((jump & 0xff) as u8)
+    }
+
     pub fn compile_stmt(&mut self, stmt: Stmt) {
         match stmt {
             Stmt::Print(expr) => {
                 self.compile_expr(*expr);
                 self.emit_byte(OpCode::Print as u8);
             }
+            Stmt::If(condition, then, otherwise) => {
+                self.compile_expr(*condition);
+                let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+                self.emit_byte(OpCode::Pop as u8);
+                self.compile_stmt(*then);
+                let else_jump = self.emit_jump(OpCode::Jump);
+                self.patch_jump(then_jump);
+                self.emit_byte(OpCode::Pop as u8);
+                if let Some(body) = otherwise {
+                    self.compile_stmt(*body);
+                }
+                self.patch_jump(else_jump);
+            }
+            Stmt::While(condition, body) => {
+                let loop_start = self.chunk.len();
+                self.compile_expr(*condition);
+                let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
+                self.emit_byte(OpCode::Pop as u8);
+                self.compile_stmt(*body);
+                self.emit_loop(loop_start);
+                self.patch_jump(exit_jump);
+                self.emit_byte(OpCode::Pop as u8);
+            }
+
             Stmt::Expr(expr) => {
                 self.compile_expr(*expr);
                 self.emit_byte(OpCode::Pop as u8);
@@ -141,7 +188,7 @@ impl Compiler {
                     self.emit_byte(arg.try_into().unwrap())
                 } else {
                     self.emit_byte(OpCode::SetGlobal as u8);
-                    let interned_name = self.interner.intern_str(&ident);
+                    let interned_name = self.interner.intern(ident);
                     let name_idx = self.store_constant(Value::String(interned_name));
                     self.emit_byte(name_idx);
                 }
@@ -150,7 +197,9 @@ impl Compiler {
                 self.scope_depth += 1;
                 self.compile_prog(decls);
                 self.scope_depth -= 1;
-                while self.locals.len() > 0 && self.locals[self.locals.len() - 1].1 > self.scope_depth {
+                while self.locals.len() > 0
+                    && self.locals[self.locals.len() - 1].1 > self.scope_depth
+                {
                     self.emit_byte(OpCode::Pop as u8);
                     self.locals.pop();
                 }
@@ -180,7 +229,7 @@ impl Compiler {
                     }
                     self.locals.push((name, self.scope_depth));
                 } else {
-                    let interned_name = self.interner.intern_str(&name);
+                    let interned_name = self.interner.intern(name);
                     let name_idx = self.store_constant(Value::String(interned_name));
                     self.emit_byte(OpCode::DefineGlobal as u8);
                     self.emit_byte(name_idx);

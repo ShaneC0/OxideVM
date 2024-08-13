@@ -91,7 +91,9 @@ pub enum Stmt {
     Print(Box<Expr>),
     Expr(Box<Expr>),
     Block(Vec<Box<Decl>>),
-    Assign(String, Box<Expr>)
+    Assign(String, Box<Expr>),
+    If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
+    While(Box<Expr>, Box<Stmt>),
 }
 
 #[derive(Debug)]
@@ -107,69 +109,6 @@ pub enum Expr {
 
 pub struct AST {
     pub decls: Vec<Box<Decl>>,
-}
-
-
-impl fmt::Display for Decl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Decl::Var(name, expr_opt) => {
-                if let Some(expr) = expr_opt.as_ref() {
-                    write!(f, "Decl::Var\n  Name: {}\n  Expr:\n    {}", name, expr)
-                } else {
-                    write!(f, "Decl::Var\n  Name: {}", name)
-                }
-            }
-            Decl::Stmt(stmt) => write!(f, "Decl::Stmt\n  {}", stmt),
-        }
-    }
-}
-
-impl fmt::Display for Stmt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Stmt::Print(expr) => write!(f, "Stmt::Print\n  Expr:\n    {}", expr),
-            Stmt::Expr(expr) => write!(f, "Stmt::Expr\n  {}", expr),
-            Stmt::Assign(name, expr) => write!(f, "Stmt::Assign\n    Ident:\n      {}\n    Expr:\n     {}", name, expr),
-            Stmt::Block(stmts) => {
-                write!(f, "Stmt::Block")?;
-                for stmt in stmts {
-                    write!(f, "\n  {}", stmt)?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Number(n) => write!(f, "Expr::Number: {}", n),
-            Expr::Bool(b) => write!(f, "Expr::Bool: {}", b),
-            Expr::String(s) => write!(f, "Expr::String '{}'", s),
-            Expr::Binary(left, op, right) => write!(f, "Expr::Binary\n  Left:\n    {}\n  Op: {}\n  Right:\n    {}", left, op, right),
-            Expr::Unary(op, expr) => write!(f, "Expr::Unary\n  Op: {}\n  Expr:\n    {}", op, expr),
-            Expr::Ident(n) => write!(f, "Expr::Ident {}", n),
-            Expr::Group(expr) => write!(f, "Expr::Group\n  Expr:\n    {}", expr),
-        }
-    }
-}
-
-impl fmt::Display for AST {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "=== AST ===")?;
-        for decl in &self.decls {
-            write!(f, "\n{}", decl)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Operator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Operator: {:?}", self)
-    }
 }
 
 pub struct Parser<'a> {
@@ -207,7 +146,7 @@ impl<'a> Parser<'a> {
         let mut token = self.next();
         loop {
             match token.kind {
-                TokenType::Semicolon | TokenType::RBrace => {
+                TokenType::Semicolon | TokenType::RBrace | TokenType::EOF => {
                     break;
                 }
                 _ => {
@@ -236,6 +175,17 @@ impl<'a> Parser<'a> {
         matches
     }
 
+    fn consume(&mut self, kind: TokenType) -> Result<(), ParseError> {
+        let t = self.next();
+        if t.kind == kind {
+            Ok(())
+        } else {
+            let e = self.error(t, ErrorType::ExpectedToken(kind));
+            self.synchronize();
+            Err(e)
+        }
+    }
+
     fn primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.next();
         match token.kind {
@@ -250,15 +200,9 @@ impl<'a> Parser<'a> {
             TokenType::StringLiteral => Ok(Expr::String(token.lexeme.to_string())),
             TokenType::LParen => {
                 let expression = self.expr(0)?;
-                let token = self.next();
-                if token.kind != TokenType::RParen {
-                    let e = self.error(token, ErrorType::ExpectedToken(TokenType::RParen));
-                    self.synchronize();
-                    Err(e)
-                } else {
-                    Ok(Expr::Group(Box::new(expression)))
-                }
-            },
+                self.consume(TokenType::RParen)?;
+                Ok(Expr::Group(Box::new(expression)))
+            }
             TokenType::Identifier => Ok(Expr::Ident(token.lexeme.to_string())),
             _ => {
                 let e = self.error(token, ErrorType::UnexpectedToken);
@@ -342,25 +286,14 @@ impl<'a> Parser<'a> {
 
     fn print_stmt(&mut self) -> Result<Stmt, ParseError> {
         let expr = self.expr(0)?;
-        let next_token = self.next();
-        if next_token.kind != TokenType::Semicolon {
-            let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
-            self.synchronize();
-            return Err(e);
-        }
+        self.consume(TokenType::Semicolon)?;
         Ok(Stmt::Print(Box::new(expr)))
     }
 
     fn expr_stmt(&mut self) -> Result<Stmt, ParseError> {
         let expr = self.expr(0)?;
-        let next_token = self.next();
-        if next_token.kind != TokenType::Semicolon {
-            let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::Semicolon));
-            self.synchronize();
-            Err(e)
-        } else {
-            Ok(Stmt::Expr(Box::new(expr)))
-        }
+        self.consume(TokenType::Semicolon)?;
+        Ok(Stmt::Expr(Box::new(expr)))
     }
 
     fn block_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -392,11 +325,35 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn if_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(TokenType::LParen)?;
+        let expr = self.expr(0)?;
+        self.consume(TokenType::RParen)?;
+        let then = self.stmt()?;
+        let next = self.next();
+        if next.kind != TokenType::Else {
+            self.push_back(next);
+            return Ok(Stmt::If(Box::new(expr), Box::new(then), None));
+        }
+        let otherwise = self.stmt()?;
+        Ok(Stmt::If(Box::new(expr), Box::new(then), Some(Box::new(otherwise))))
+    }
+
+    fn while_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(TokenType::LParen)?;
+        let expr = self.expr(0)?;
+        self.consume(TokenType::RParen)?;
+        let body = self.stmt()?;
+        Ok(Stmt::While(Box::new(expr), Box::new(body)))
+    }
+
     fn stmt(&mut self) -> Result<Stmt, ParseError> {
         let token = self.next();
         match token.kind {
             TokenType::Print => self.print_stmt(),
             TokenType::LBrace => self.block_stmt(),
+            TokenType::If => self.if_stmt(),
+            TokenType::While => self.while_stmt(),
             TokenType::Identifier => {
                 let next_token = self.next();
                 if next_token.kind == TokenType::Equal {
@@ -432,12 +389,7 @@ impl<'a> Parser<'a> {
             self.push_back(token);
             initializer = None;
         }
-        let semi = self.next();
-        if semi.kind != TokenType::Semicolon {
-            let e = self.error(semi, ErrorType::ExpectedToken(TokenType::Semicolon));
-            self.synchronize();
-            return Err(e);
-        }
+        self.consume(TokenType::Semicolon)?;
         Ok(Decl::Var(name, Box::new(initializer)))
     }
 

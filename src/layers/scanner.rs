@@ -3,42 +3,33 @@ use std::collections::HashMap;
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub enum TokenType {
     Print,
-
     Let,
-
+    If,
+    Else,
+    While,
+    For,
     Identifier,
-
     Equal,
-
     Or,
     And,
-
     EqualEqual,
     BangEqual,
-
     Greater,
     GreaterEqual,
     Less,
     LessEqual,
-
     Plus,
     Minus,
-
     Star,
     Slash,
-
     Bang,
-
     LParen,
     RParen,
-
     NumericLiteral,
     BoolLiteral,
     StringLiteral,
-
     LBrace,
     RBrace,
-
     Semicolon,
     Error,
     EOF,
@@ -81,6 +72,10 @@ impl<'a> Scanner<'a> {
         keywords.insert("false", TokenType::BoolLiteral);
         keywords.insert("print", TokenType::Print);
         keywords.insert("let", TokenType::Let);
+        keywords.insert("if", TokenType::If);
+        keywords.insert("else", TokenType::Else);
+        keywords.insert("while", TokenType::While);
+        keywords.insert("for", TokenType::For);
         Scanner {
             source,
             start: 0,
