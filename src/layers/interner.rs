@@ -17,7 +17,7 @@ impl IntoHeapType for Function {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Function {
     pub chunk: Vec<u8>,
     pub ip: usize,
@@ -40,7 +40,7 @@ impl fmt::Display for Function {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum HeapType {
     String(String),
     Function(Function),
@@ -55,7 +55,7 @@ impl fmt::Display for HeapType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HeapInterner {
     map: HashMap<HeapType, usize>,
     vec: Vec<HeapType>,

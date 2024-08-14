@@ -9,6 +9,12 @@ fn pipeline(input: &str) {
         Ok(prog) => {
             let mut c = Compiler::new();
             c.compile(prog);
+            print!("Bytecode: ");
+            for inst in &c.chunk {
+                print!("{:02x} ", inst);
+            }
+            println!("\nConstants: {:?}", c.constants);
+            println!("Interner: {:?}", c.interner);
             let mut vm = VM::new(c.chunk.clone(), c.constants.clone(), c.interner.clone());
             vm.run();
         }
@@ -18,14 +24,8 @@ fn pipeline(input: &str) {
 
 fn main() {
     let input = "
-        let x = 0;
-        let y = 1;
-        while(y < 10201010) {
-            let temp = y;
-            y = x + y;
-            x = temp;
-            print y;
-        }
+        let x = \"hello\";
+        print x;
     ";
     pipeline(input);
 }

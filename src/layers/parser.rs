@@ -301,28 +301,16 @@ impl<'a> Parser<'a> {
         while !self.check(TokenType::RBrace) && !self.check(TokenType::EOF) {
             decls.push(Box::new(self.decl()?));
         }
-        let next_token = self.next();
-        if next_token.kind != TokenType::RBrace {
-            let e = self.error(next_token, ErrorType::ExpectedToken(TokenType::RBrace));
-            self.synchronize();
-            Err(e)
-        } else {
-            Ok(Stmt::Block(decls))
-        }
+        self.consume(TokenType::RBrace)?;
+        Ok(Stmt::Block(decls))
     }
 
     fn assign_stmt(&mut self) -> Result<Stmt, ParseError> {
         let ident = self.next();
         self.next();
         let expr = self.expr(0)?;
-        let semi = self.next();
-        if semi.kind != TokenType::Semicolon {
-            let e = self.error(semi, ErrorType::ExpectedToken(TokenType::Semicolon));
-            self.synchronize();
-            Err(e)
-        } else {
-            Ok(Stmt::Assign(ident.lexeme.to_string(), Box::new(expr)))
-        }
+        self.consume(TokenType::Semicolon)?;
+        Ok(Stmt::Assign(ident.lexeme.to_string(), Box::new(expr)))
     }
 
     fn if_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -330,11 +318,10 @@ impl<'a> Parser<'a> {
         let expr = self.expr(0)?;
         self.consume(TokenType::RParen)?;
         let then = self.stmt()?;
-        let next = self.next();
-        if next.kind != TokenType::Else {
-            self.push_back(next);
+        if !self.check(TokenType::Else){
             return Ok(Stmt::If(Box::new(expr), Box::new(then), None));
         }
+        self.next();
         let otherwise = self.stmt()?;
         Ok(Stmt::If(Box::new(expr), Box::new(then), Some(Box::new(otherwise))))
     }
