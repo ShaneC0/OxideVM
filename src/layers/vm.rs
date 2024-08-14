@@ -110,6 +110,18 @@ impl VM {
         println!("---------------------------------------------");
     }
 
+    fn lookup_ident(&mut self) -> Option<String> {
+        if let Some(arg) = self.read_byte() {
+            let ident_val = self.constants[arg as usize];
+            if let Value::String(ident_idx) = ident_val {
+                if let Some(HeapType::String(ident)) = self.interner.get(ident_idx) {
+                    return Some(ident.to_string());
+                }
+            }
+        }
+        None
+    }
+
     pub fn run(&mut self) {
         while let Some(byte) = self.read_byte() {
             match byte {
@@ -157,43 +169,27 @@ impl VM {
                 }
                 x if x == OpCode::Nil as u8 => self.push(Value::Nil),
                 x if x == OpCode::DefineGlobal as u8 => {
-                    if let Some(arg) = self.read_byte() {
-                        let ident_val = self.constants[arg as usize];
-                        if let Value::String(ident_idx) = ident_val {
-                            if let Some(HeapType::String(ident_name)) = self.interner.get(ident_idx) {
-                                let name = ident_name.to_string();
-                                let value = self.pop();
-                                self.globals.insert(name, value);
-                            }
-                        }
+                    if let Some(name) = self.lookup_ident() {
+                        let value = self.pop();
+                        self.globals.insert(name, value);
+
                     }
                 }
                 x if x == OpCode::GetGlobal as u8 => {
-                    if let Some(arg) = self.read_byte() {
-                        let ident_val = self.constants[arg as usize];
-                        if let Value::String(ident_idx) = ident_val {
-                            if let Some(HeapType::String(ident_name)) = self.interner.get(ident_idx) {
-                                match self.globals.get(&ident_name.clone()) {
-                                    Some(val) => self.push(*val),
-                                    None => panic!(
-                                        "Attempt to access undeclared variable '{}'.",
-                                        ident_name
-                                    ),
-                                }
-                            }
+                    if let Some(name) = self.lookup_ident() {
+                        match self.globals.get(&name) {
+                            Some(val) => self.push(*val),
+                            None => panic!(
+                                "Attempt to access undeclared variable '{}'.",
+                                name
+                            ),
                         }
                     }
                 }
                 x if x == OpCode::SetGlobal as u8 => {
-                    if let Some(arg) = self.read_byte() {
-                        let ident_val = self.constants[arg as usize];
-                        if let Value::String(ident_idx) = ident_val {
-                            if let Some(HeapType::String(ident_name)) = self.interner.get(ident_idx) {
-                                let name = ident_name.to_string();
-                                let value = self.pop();
-                                self.globals.insert(name, value);
-                            }
-                        }
+                    if let Some(name) = self.lookup_ident() {
+                        let value = self.pop();
+                        self.globals.insert(name, value);
                     }
                 }
                 x if x == OpCode::GetLocal as u8 => {

@@ -24,8 +24,14 @@ fn pipeline(input: &str) {
 
 fn main() {
     let input = "
-        let x = \"hello\";
-        print x;
+        let x = 0;
+        let y = 1;
+        while(y < 1000000) {
+            let temp = x;
+            x = x + y;
+            y = temp;
+            print y;
+        }
     ";
     pipeline(input);
 }
