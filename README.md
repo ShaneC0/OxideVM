@@ -3,13 +3,13 @@
     A token is a basic syntactic unit of the language, like keywords, identifiers, or punctuation. 
     Each token has a "lexeme" which is the actual text of which the token consists of.
     For example, the input string
-    """
+    ```
     let a = 25 / 3;
-    """
+    ```
     Is tokenized into the following token lexeme pairs.
-    """
+    ```
     (TOKEN::LET, "let") (TOKEN::IDENTIFIER, "a") (TOKEN::EQUAL, "=") (TOKEN::NUMERIC_LITERAL, "25") (TOKEN::SLASH, "/") (TOKEN::NUMERIC_LITERAL, "3") (TOKEN::SEMICOLON, ";")
-    """
+    ```
     The heart of our scanner module is the "next" function.
     The next function returns the next token in the input stream.
     If there are no more tokens, it returns a special EOF token.
@@ -20,11 +20,11 @@
     Parsing is the process of transforming a linear sequence of tokens into a heirarchical structure called an Abstract Syntax Tree (AST).
     This structure of the AST is suited to capture the recursive nature of programs, and is easier for later stages of the pipeline to operate on.
     For example, the input string
-    """
+    ```
     let a = 25 + 3 / 30;
-    """
+    ```
     Is parsed into a structure like this:
-    """
+    ```
     Declaration:
       Ident: a
       Expr: 
@@ -36,7 +36,7 @@
                 Left: 3
                 Op: /
                 Right: 30
-    """
+    ```
     This structure captures the meaning of the statement by ensuring that, when evaluated, the order of operations is maintained.
     The parser in Oxide is an LL(2)* Recursive Descent parser. The only part of the parser which uses the second token of lookahead is when seeing an identifier
         in the beginning of a statement. The parser must look ahead past the token to see if the next is an '=' to differentiate an assignment and an expression statement.
@@ -54,19 +54,19 @@
     When some piece of data is given to the interner, it stores it in the pool and returns you its index.
     If that data is already in the pool, it will return the index of the existing data.
     For example, the input string
-    """
+    ```
     lex x = "hello";
     print x;
-    """
+    ```
     Compiles into the follwing information.
-    """
+    ```
     Bytecode: 01 00 0f 01 10 02 0c 
     Constants: [String(0), String(1), String(1)]
     Interner: HeapInterner { map: {String("hello"): 0, String("x"): 1}, vec: [String("hello"), String("x")] }
-    """
+    ```
     Note that the string types in the constant array hold numbers. Those are their indexes in the interner.
 
-# Grammar!
+# Grammar
     program         ::= decl* eof
     decl            ::= let_decl | stmt
     let_decl        ::= "let" ident ( "=" expr )? ";"
@@ -85,4 +85,3 @@
     mult_expr       ::= unary_expr( ( "*" | "/" ) mult_expr )?
     unary_expr      ::= ( "!" | "-" ) unary_expr | primary_expr
     primary_expr    ::= number_literal | bool_literal | string_literal | identifier | "(" expr ")"
-
